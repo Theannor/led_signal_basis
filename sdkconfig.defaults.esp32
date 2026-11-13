@@ -1,0 +1,6 @@
+# Zusätze für das klassische ESP32 (gelesen zusätzlich zu sdkconfig.defaults)
+# Bauen: idf.py -B build_esp32 -D SDKCONFIG=sdkconfig.esp32 set-target esp32
+CONFIG_IDF_TARGET="esp32"
+# Bluetooth-Controller nur für LE (spart RAM und Flash gegenüber Dual-Mode)
+CONFIG_BTDM_CTRL_MODE_BLE_ONLY=y
+CONFIG_BTDM_CTRL_MODE_BTDM=n

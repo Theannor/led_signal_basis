@@ -1,0 +1,12 @@
+:cmock:
+  :plugins:
+    - expect
+    - expect_any_args
+    - return_thru_ptr
+    - array
+    - ignore
+    - ignore_arg
+    - callback
+  # Makro-Deklaration, die CMock nicht versteht (wie im esp_wifi-Mock von ESP-IDF)
+  :strippables:
+    - '(?:ESP_EVENT_DECLARE_BASE\s*\([\s\w\*_,]*\))'

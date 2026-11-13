@@ -1,0 +1,12 @@
+build/
+managed_components/
+sdkconfig
+sdkconfig.old
+dependencies.lock
+test/host/build/
+test/host/sdkconfig
+test/host/sdkconfig.old
+test/host/dependencies.lock
+build_esp32/
+sdkconfig.esp32
+sdkconfig.esp32.old

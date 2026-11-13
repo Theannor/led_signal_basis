@@ -1,0 +1,5 @@
+CONFIG_IDF_TARGET="linux"
+CONFIG_UNITY_ENABLE_IDF_TEST_RUNNER=n
+# CMock wertet #if nicht aus und mockt auch die WebSocket-Funktionen;
+# deren Typen gibt es nur mit dieser Option (nur im Testprojekt).
+CONFIG_HTTPD_WS_SUPPORT=y
