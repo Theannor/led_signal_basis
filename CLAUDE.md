@@ -1,6 +1,6 @@
-# LED Color Cycling (ESP32-C3)
+# led_signal_basis (ESP32-C3 / ESP32)
 
-Basic driver for a WS2812B strip, built with ESP-IDF.
+Firmware for a WS2812B LED signal lamp, built with ESP-IDF.
 
 ## Hardware
 - Board: ESP32 with built-in USB (port `/dev/ttyACM0`), 4 MB flash;

@@ -1,6 +1,13 @@
 # led_signal_basis
 
-Drives a WS2812B LED strip with an ESP32-C3, built with ESP-IDF v6.1.
+Drives a WS2812B LED strip with an ESP32 (tested with an ESP32-C3 SuperMini and an ESP32 D1 mini), built with ESP-IDF v6.1.
+
+Part of the LED signal project:
+
+- **led_signal_basis** (this repository) – the firmware
+- [led_signal_crystals](https://codeberg.org/Theannor/led_signal_crystals) – 3D-printed crystal case for a 4 × 4 LED matrix
+- [led_signal_desktop_ble_controller](https://codeberg.org/Theannor/led_signal_desktop_ble_controller) – desktop app that sends your PC's status
+  (muted, VPN, screen unlocked) to the lamp over Bluetooth or the REST API
 
 At boot the ESP tries to join your Wi-Fi as a client. If that works, the strip
 flashes green and then **twinkles** (see below). If not, the ESP opens its
@@ -220,7 +227,8 @@ leaves, the password is shown again.
 
 ## Hardware
 
-- ESP32-C3 with built-in USB (`/dev/ttyACM0`), 4 MB flash, 1.5 MB app partition
+- ESP32-C3 (e.g. SuperMini) with built-in USB (`/dev/ttyACM0`), or a classic ESP32
+  (e.g. D1 mini, USB-serial chip, usually `/dev/ttyUSB0`); 4 MB flash, 1.5 MB app partition
   (`partitions_singleapp_large.csv`; NVS keeps its place, so settings survive the switch)
 - WS2812B strip with 16–25 LEDs, GRB color order. By default 16 LEDs with data on
   GPIO10 (classic ESP32: GPIO21); pin and count can be changed on the web site
