@@ -311,6 +311,9 @@ about private include folders shared between ESP-IDF's own `esp_wifi` and
 
 ## License
 
-This project is licensed under the GNU General Public License v3.0, see [LICENSE](LICENSE).
+Copyright (C) 2026 Theannor
+
+This project is licensed under the GNU General Public License v3.0 or later
+(`GPL-3.0-or-later`), see [LICENSE](LICENSE).
 Dependencies fetched by the ESP-IDF component manager (`managed_components/`) and
 ESP-IDF itself keep their own licenses.

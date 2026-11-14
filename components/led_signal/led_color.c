@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Theannor
 #include "led_color.h"
 
 // Einen Kanal skalieren; Rechnung in 32 Bit, damit nichts überläuft

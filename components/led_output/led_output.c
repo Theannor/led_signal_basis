@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Theannor
 #include "led_output.h"
 #include "esp_log.h"
 #include "led_strip.h"

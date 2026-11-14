@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Theannor
 #include "led_twinkle.h"
 
 void led_twinkle_start(led_twinkle_t *t, const led_twinkle_cfg_t *cfg)

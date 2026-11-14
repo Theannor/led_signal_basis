@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Theannor
 #include "unity.h"
 #include "net_name.h"
 #include "Mockmdns.h"

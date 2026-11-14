@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Theannor
 #include <stdint.h>
 #include "unity.h"
 #include "led_twinkle.h"

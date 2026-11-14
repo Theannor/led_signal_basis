@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Theannor
 // Globale Symbole, die sonst die WLAN-Bibliothek liefert
 // (gebraucht von WIFI_INIT_CONFIG_DEFAULT() und dem Event-Basisnamen)
 #include "esp_wifi.h"

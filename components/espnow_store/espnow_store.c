@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Theannor
 #include "espnow_store.h"
 #include "esp_log.h"
 #include "nvs.h"

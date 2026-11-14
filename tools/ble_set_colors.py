@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Theannor
 """Farbpalette von led_signal_basis per Bluetooth LE lesen oder setzen.
 
 Beispiele:

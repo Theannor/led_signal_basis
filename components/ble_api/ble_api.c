@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Theannor
 #include "ble_api.h"
 #include "esp_log.h"
 #include "palette_store.h"
