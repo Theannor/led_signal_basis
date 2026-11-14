@@ -8,7 +8,7 @@
 extern "C" {
 #endif
 
-// Legt den WS2812B-Strip (GRB) an GPIO gpio mit count LEDs an (RMT-Backend).
+// Legt den WS2812B-Strip (GRB) an GPIO gpio mit count LEDs an (SPI-Backend mit DMA).
 // Gibt ESP_ERR_INVALID_STATE zurück, wenn schon initialisiert.
 esp_err_t led_output_init(int gpio, size_t count);
 

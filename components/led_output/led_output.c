@@ -2,8 +2,9 @@
 #include "esp_log.h"
 #include "led_strip.h"
 
-// RMT-Auflösung: 10 MHz reicht für das WS2812-Timing
-#define LED_OUTPUT_RMT_RESOLUTION_HZ  (10 * 1000 * 1000)
+// SPI-Bus für den Strip. SPI statt RMT, weil SPI den ganzen Frame per DMA
+// sendet; RMT muss ohne DMA per Interrupt nachfüllen und flackert unter Funklast.
+#define LED_OUTPUT_SPI_HOST  SPI2_HOST
 
 static const char *TAG = "led_output";
 
@@ -26,18 +27,19 @@ esp_err_t led_output_init(int gpio, size_t count)
         .color_component_format = LED_STRIP_COLOR_COMPONENT_FMT_GRB,
     };
     // clk_src bleibt 0: der Treiber nimmt dann den Standard-Takt
-    led_strip_rmt_config_t rmt_config = {
-        .resolution_hz = LED_OUTPUT_RMT_RESOLUTION_HZ,
+    led_strip_spi_config_t spi_config = {
+        .spi_bus = LED_OUTPUT_SPI_HOST,
+        .flags.with_dma = 1,
     };
 
-    esp_err_t err = led_strip_new_rmt_device(&strip_config, &rmt_config, &s_strip);
+    esp_err_t err = led_strip_new_spi_device(&strip_config, &spi_config, &s_strip);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Strip anlegen fehlgeschlagen: %s", esp_err_to_name(err));
         s_strip = NULL;
         return err;
     }
     s_count = count;
-    ESP_LOGI(TAG, "Strip an GPIO %d mit %u LEDs bereit", gpio, (unsigned)count);
+    ESP_LOGI(TAG, "Strip an GPIO %d mit %u LEDs bereit (SPI/DMA)", gpio, (unsigned)count);
     return ESP_OK;
 }
 

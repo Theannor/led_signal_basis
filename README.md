@@ -244,7 +244,7 @@ speed, default hostname, default Bluetooth name) are `#define`s at the top of `m
 |------|---------|
 | `main/` | Application: settings, boot flow (client or AP), `display` FreeRTOS task |
 | `components/led_signal/` | Hardware-independent logic: colors, rainbow and pulsing (`led_color.h`), twinkling (`led_twinkle.h`), color palette, its JSON and binary formats and checksum (`led_palette.h`), AP password (`led_password.h`), LED pin and count validation (`led_config.h`), Wi-Fi settings, AP SSID and Bluetooth name validation (`net_config.h`), form parsing and HTML pages (`web_form.h`), ESP-NOW settings and MAC lists (`espnow_config.h`), ESP-NOW messages (`espnow_proto.h`), channel search (`espnow_scan.h`) |
-| `components/led_output/` | Thin wrapper around the `espressif/led_strip` driver (RMT backend): `led_output_init()`, `led_output_show()` |
+| `components/led_output/` | Thin wrapper around the `espressif/led_strip` driver (SPI backend with DMA, so radio load does not cause flicker): `led_output_init()`, `led_output_show()` |
 | `components/password_store/` | Loads the AP password from NVS, or creates and saves a new one |
 | `components/config_store/` | Loads and saves the client Wi-Fi settings in NVS |
 | `components/palette_store/` | Loads and saves the color palette in NVS |

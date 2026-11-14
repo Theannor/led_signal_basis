@@ -14,4 +14,5 @@ endif()
 idf_component_mock(INCLUDE_DIRS "${led_strip_include}" "stub_include"
                    MOCK_HEADER_FILES
                    "${led_strip_include}/led_strip.h"
-                   "${led_strip_include}/led_strip_rmt.h")
+                   "${led_strip_include}/led_strip_rmt.h"
+                   "${led_strip_include}/led_strip_spi.h")

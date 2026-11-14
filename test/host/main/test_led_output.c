@@ -1,7 +1,7 @@
 #include "unity.h"
 #include "led_output.h"
 #include "Mockled_strip.h"
-#include "Mockled_strip_rmt.h"
+#include "Mockled_strip_spi.h"
 
 // Platzhalter-Handle; der Mock greift nie darauf zu
 static int s_dummy_strip;
@@ -9,15 +9,15 @@ static int s_dummy_strip;
 
 // Vom Stub mitgeschriebene Konfiguration
 static led_strip_config_t s_seen_strip_config;
-static led_strip_rmt_config_t s_seen_rmt_config;
+static led_strip_spi_config_t s_seen_spi_config;
 
-static esp_err_t new_rmt_device_stub(const led_strip_config_t *led_config,
-                                     const led_strip_rmt_config_t *rmt_config,
+static esp_err_t new_spi_device_stub(const led_strip_config_t *led_config,
+                                     const led_strip_spi_config_t *spi_config,
                                      led_strip_handle_t *ret_strip, int cmock_num_calls)
 {
     (void)cmock_num_calls;
     s_seen_strip_config = *led_config;
-    s_seen_rmt_config = *rmt_config;
+    s_seen_spi_config = *spi_config;
     *ret_strip = FAKE_HANDLE;
     return ESP_OK;
 }
@@ -25,7 +25,7 @@ static esp_err_t new_rmt_device_stub(const led_strip_config_t *led_config,
 // Hilfsfunktion: led_output erfolgreich mit count LEDs initialisieren
 static void init_ok(size_t count)
 {
-    led_strip_new_rmt_device_Stub(new_rmt_device_stub);
+    led_strip_new_spi_device_Stub(new_spi_device_stub);
     TEST_ASSERT_EQUAL(ESP_OK, led_output_init(10, count));
 }
 
@@ -37,7 +37,8 @@ static void test_init_passes_strip_config(void)
     TEST_ASSERT_EQUAL(LED_MODEL_WS2812, s_seen_strip_config.led_model);
     TEST_ASSERT_EQUAL_HEX32(LED_STRIP_COLOR_COMPONENT_FMT_GRB.format_id,
                             s_seen_strip_config.color_component_format.format_id);
-    TEST_ASSERT_EQUAL_UINT32(10 * 1000 * 1000, s_seen_rmt_config.resolution_hz);
+    TEST_ASSERT_EQUAL(SPI2_HOST, s_seen_spi_config.spi_bus);
+    TEST_ASSERT_EQUAL_UINT32(1, s_seen_spi_config.flags.with_dma);
 }
 
 static void test_init_twice_fails(void)
@@ -48,7 +49,7 @@ static void test_init_twice_fails(void)
 
 static void test_init_reports_driver_error(void)
 {
-    led_strip_new_rmt_device_ExpectAnyArgsAndReturn(ESP_ERR_NO_MEM);
+    led_strip_new_spi_device_ExpectAnyArgsAndReturn(ESP_ERR_NO_MEM);
     TEST_ASSERT_EQUAL(ESP_ERR_NO_MEM, led_output_init(10, 16));
     // Danach ist nichts initialisiert
     led_color_t c = {0};

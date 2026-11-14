@@ -3,6 +3,7 @@
 #include "led_output.h"
 #include "Mockled_strip.h"
 #include "Mockled_strip_rmt.h"
+#include "Mockled_strip_spi.h"
 #include "Mocknvs.h"
 #include "Mockesp_wifi.h"
 #include "Mockesp_wifi_default.h"
@@ -46,6 +47,7 @@ void setUp(void)
 {
     Mockled_strip_Init();
     Mockled_strip_rmt_Init();
+    Mockled_strip_spi_Init();
     Mocknvs_Init();
     Mockesp_wifi_Init();
     Mockesp_wifi_default_Init();
@@ -61,6 +63,7 @@ void tearDown(void)
     // Erwartungen des Tests prüfen, dann led_output für den nächsten Test zurücksetzen
     Mockled_strip_Verify();
     Mockled_strip_rmt_Verify();
+    Mockled_strip_spi_Verify();
     Mocknvs_Verify();
     Mockesp_wifi_Verify();
     Mockesp_wifi_default_Verify();
@@ -73,6 +76,7 @@ void tearDown(void)
     led_output_deinit();
     Mockled_strip_Destroy();
     Mockled_strip_rmt_Destroy();
+    Mockled_strip_spi_Destroy();
     Mocknvs_Destroy();
     Mockesp_wifi_Destroy();
     Mockesp_wifi_default_Destroy();
