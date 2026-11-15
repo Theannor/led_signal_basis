@@ -50,6 +50,11 @@ typedef struct {
 // Das Client-Passwort wird nie in die Seite geschrieben.
 int web_page_render(char *buf, size_t len, const web_page_info_t *info);
 
+// Baut die Status-Seite (Modus, IP, Hostname, ESP-NOW-MAC, Version; mit Menü) nach buf.
+// Nutzt aus info nur lang, client_mode, receiver_mode, ip, hostname, own_mac und version.
+// Gibt die Länge zurück, -1 wenn buf zu klein ist.
+int web_status_page_render(char *buf, size_t len, const web_page_info_t *info);
+
 // Baut die Farben-Seite (mit Menü) in der Sprache lang nach buf. Die Seite lädt
 // und speichert die Palette per JavaScript über GET/PUT /api/colors.
 // Gibt die Länge zurück, -1 wenn buf zu klein ist.

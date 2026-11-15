@@ -17,6 +17,7 @@ static int s_dummy_server;
 static const uint8_t OWN_MAC[6] = {0x02, 0x11, 0x22, 0x33, 0x44, 0x55};
 
 static esp_err_t (*s_get_root)(httpd_req_t *req);
+static esp_err_t (*s_get_status)(httpd_req_t *req);
 static esp_err_t (*s_get_colors)(httpd_req_t *req);
 static esp_err_t (*s_put_colors)(httpd_req_t *req);
 static esp_err_t (*s_post_espnow)(httpd_req_t *req);
@@ -39,6 +40,8 @@ static esp_err_t register_stub(httpd_handle_t handle, const httpd_uri_t *uri, in
 {
     if (strcmp(uri->uri, "/") == 0 && uri->method == HTTP_GET) {
         s_get_root = uri->handler;
+    } else if (strcmp(uri->uri, "/status") == 0 && uri->method == HTTP_GET) {
+        s_get_status = uri->handler;
     } else if (strcmp(uri->uri, "/colors") == 0 && uri->method == HTTP_GET) {
         s_get_colors = uri->handler;
     } else if (strcmp(uri->uri, "/api/colors") == 0 && uri->method == HTTP_PUT) {
@@ -106,7 +109,7 @@ static void start_server(bool receiver_mode, const espnow_config_t *espnow)
     s_restarts = 0;
     s_saved_len = 0;
     s_sent[0] = s_status[0] = '\0';
-    s_get_root = s_get_colors = s_put_colors = s_post_espnow = NULL;
+    s_get_root = s_get_status = s_get_colors = s_put_colors = s_post_espnow = NULL;
     httpd_start_Stub(start_stub);
     httpd_register_uri_handler_Stub(register_stub);
     // Keine Cookie- und Accept-Language-Header -> deutsche Seiten
@@ -167,8 +170,10 @@ static void test_render_espnow_card(void)
     TEST_ASSERT_NOT_NULL(strstr(buf, "value=\"gateway\" checked"));
     TEST_ASSERT_NULL(strstr(buf, "value=\"receiver\" checked"));
     TEST_ASSERT_NOT_NULL(strstr(buf, "value=\"aa:bb:cc:dd:ee:02, 10:20:30:40:50:60\""));
-    TEST_ASSERT_NOT_NULL(strstr(buf, "<dt>ESP-NOW-MAC</dt><dd>02:11:22:33:44:55</dd>"));
+    TEST_ASSERT_NULL(strstr(buf, "<dt>ESP-NOW-MAC</dt>"));
     TEST_ASSERT_NOT_NULL(strstr(buf, "href=\"/colors\""));
+    TEST_ASSERT_GREATER_THAN(0, web_status_page_render(buf, sizeof(buf), &info));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "<dt>ESP-NOW-MAC</dt><dd>02:11:22:33:44:55</dd>"));
 
     // Empfänger: Rolle markiert, Menü ohne Farben
     info.espnow_receiver = true;
@@ -179,12 +184,15 @@ static void test_render_espnow_card(void)
     TEST_ASSERT_NOT_NULL(strstr(buf, "value=\"receiver\" checked"));
     TEST_ASSERT_NOT_NULL(strstr(buf, "name=\"gateway\" maxlength=\"17\" value=\"aa:bb:cc:dd:ee:02\""));
     TEST_ASSERT_NULL(strstr(buf, "href=\"/colors\""));
+    TEST_ASSERT_GREATER_THAN(0, web_status_page_render(buf, sizeof(buf), &info));
     TEST_ASSERT_NOT_NULL(strstr(buf, "ESP-NOW-Empfänger"));
+    TEST_ASSERT_NULL(strstr(buf, "href=\"/colors\""));
 
     // Ohne eigene MAC kein ESP-NOW-Bereich
     info.own_mac = NULL;
     TEST_ASSERT_GREATER_THAN(0, web_page_render(buf, sizeof(buf), &info));
     TEST_ASSERT_NULL(strstr(buf, "/espnow"));
+    TEST_ASSERT_GREATER_THAN(0, web_status_page_render(buf, sizeof(buf), &info));
     TEST_ASSERT_NULL(strstr(buf, "ESP-NOW-MAC"));
 }
 
@@ -296,6 +304,13 @@ static void test_receiver_mode_blocks_colors(void)
     TEST_ASSERT_EQUAL_STRING("200 OK", s_status);
     TEST_ASSERT_NULL(strstr(s_sent, "href=\"/colors\""));
     TEST_ASSERT_NOT_NULL(strstr(s_sent, "value=\"aa:bb:cc:dd:ee:02\""));
+
+    // Status-Seite bleibt auch für Empfänger erreichbar
+    TEST_ASSERT_NOT_NULL(s_get_status);
+    TEST_ASSERT_EQUAL(ESP_OK, s_get_status(&req));
+    TEST_ASSERT_EQUAL_STRING("200 OK", s_status);
+    TEST_ASSERT_NOT_NULL(strstr(s_sent, "Access Point, danach ESP-NOW-Empfänger"));
+    TEST_ASSERT_NULL(strstr(s_sent, "href=\"/colors\""));
     stop_server();
 }
 

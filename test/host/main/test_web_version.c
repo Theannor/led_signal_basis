@@ -107,7 +107,7 @@ static void test_page_shows_version(void)
     char buf[4096];
     web_page_info_t info = {.ip = "1.2.3.4", .hostname = "h", .ssid = "s",
                             .version = "2026.1+3.gabc1234"};
-    TEST_ASSERT_GREATER_THAN(0, web_page_render(buf, sizeof(buf), &info));
+    TEST_ASSERT_GREATER_THAN(0, web_status_page_render(buf, sizeof(buf), &info));
     TEST_ASSERT_NOT_NULL(strstr(buf, "<dt>Version</dt><dd>2026.1+3.gabc1234</dd>"));
 }
 
@@ -115,7 +115,7 @@ static void test_page_without_version(void)
 {
     char buf[4096];
     web_page_info_t info = {.ip = "1.2.3.4", .hostname = "h", .ssid = "s"};
-    TEST_ASSERT_GREATER_THAN(0, web_page_render(buf, sizeof(buf), &info));
+    TEST_ASSERT_GREATER_THAN(0, web_status_page_render(buf, sizeof(buf), &info));
     TEST_ASSERT_NULL(strstr(buf, "<dt>Version</dt>"));
 }
 
@@ -124,7 +124,7 @@ static void test_page_escapes_version(void)
     char buf[4096];
     web_page_info_t info = {.ip = "1.2.3.4", .hostname = "h", .ssid = "s",
                             .version = "<b>"};
-    TEST_ASSERT_GREATER_THAN(0, web_page_render(buf, sizeof(buf), &info));
+    TEST_ASSERT_GREATER_THAN(0, web_status_page_render(buf, sizeof(buf), &info));
     TEST_ASSERT_NOT_NULL(strstr(buf, "<dd>&lt;b&gt;</dd>"));
 }
 

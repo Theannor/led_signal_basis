@@ -64,52 +64,61 @@ static web_lang_t request_lang(httpd_req_t *req)
     return web_lang_select(cookie, accept[0] != '\0' ? accept : NULL);
 }
 
-// Seite mit optionalem Hinweis in der Sprache der Anfrage senden
-static esp_err_t send_page(httpd_req_t *req, const char *status, web_msg_t msg, bool is_error)
+// Puffer für die Texte in web_page_info_t
+typedef struct {
+    char ip[16];
+    char own_mac[ESPNOW_MAC_STR_LEN];
+    char gateway[ESPNOW_MAC_STR_LEN];
+    char peers[ESPNOW_PEER_LIST_STR_MAX];
+} page_bufs_t;
+
+// Seitendaten aus dem aktuellen Zustand in der Sprache der Anfrage; Texte zeigen in bufs
+static void fill_page_info(httpd_req_t *req, web_page_info_t *info, page_bufs_t *bufs)
 {
-    web_lang_t lang = request_lang(req);
-    char ip[16] = "-";
+    memset(bufs, 0, sizeof(*bufs));
+    strlcpy(bufs->ip, "-", sizeof(bufs->ip));
     if (s_ctx.get_ip != NULL) {
-        s_ctx.get_ip(ip, sizeof(ip));
+        s_ctx.get_ip(bufs->ip, sizeof(bufs->ip));
     }
     // ESP-NOW-Bereich nur mit bekannter eigener MAC
     bool espnow = espnow_mac_is_set(s_ctx.own_mac);
-    char own_mac[ESPNOW_MAC_STR_LEN] = "";
-    char gateway[ESPNOW_MAC_STR_LEN] = "";
-    char peers[ESPNOW_PEER_LIST_STR_MAX] = "";
     if (espnow) {
-        espnow_mac_format(s_ctx.own_mac, own_mac);
+        espnow_mac_format(s_ctx.own_mac, bufs->own_mac);
         if (espnow_mac_is_set(s_ctx.espnow.gateway)) {
-            espnow_mac_format(s_ctx.espnow.gateway, gateway);
+            espnow_mac_format(s_ctx.espnow.gateway, bufs->gateway);
         }
-        espnow_peer_list_format(&s_ctx.espnow, peers, sizeof(peers));
+        espnow_peer_list_format(&s_ctx.espnow, bufs->peers, sizeof(bufs->peers));
     }
-    web_page_info_t info = {
-        .lang = lang,
+    *info = (web_page_info_t){
+        .lang = request_lang(req),
         .client_mode = s_ctx.client_mode,
-        .ip = ip,
+        .ip = bufs->ip,
         .hostname = s_ctx.config.hostname,
         .version = s_ctx.version,
         .ssid = s_ctx.config.ssid,
         .ble_name = s_ctx.ble_name[0] != '\0' ? s_ctx.ble_name : NULL,
-        .message = web_msg(lang, msg),
-        .message_is_error = is_error,
         .receiver_mode = s_ctx.receiver_mode,
-        .own_mac = espnow ? own_mac : NULL,
+        .own_mac = espnow ? bufs->own_mac : NULL,
         .espnow_receiver = s_ctx.espnow.role == ESPNOW_ROLE_RECEIVER,
-        .espnow_peers = peers,
-        .espnow_gateway = gateway,
+        .espnow_peers = bufs->peers,
+        .espnow_gateway = bufs->gateway,
         .espnow_window_s = s_ctx.espnow_window_s,
         .led_gpio_mask = s_ctx.led_gpio_mask,
         .led_gpio = s_ctx.led.gpio,
         .led_count = s_ctx.led.count,
     };
+}
 
+// HTML-Seite mit render bauen und senden
+static esp_err_t send_rendered(httpd_req_t *req, const char *status,
+                               int (*render)(char *, size_t, const web_page_info_t *),
+                               const web_page_info_t *info)
+{
     char *page = malloc(WEB_PAGE_MAX);
     if (page == NULL) {
         return ESP_ERR_NO_MEM;
     }
-    int len = web_page_render(page, WEB_PAGE_MAX, &info);
+    int len = render(page, WEB_PAGE_MAX, info);
     esp_err_t err;
     if (len < 0) {
         ESP_LOGE(TAG, "Seite passt nicht in den Puffer");
@@ -121,6 +130,26 @@ static esp_err_t send_page(httpd_req_t *req, const char *status, web_msg_t msg, 
     }
     free(page);
     return err;
+}
+
+// Einstellungen-Seite mit optionalem Hinweis in der Sprache der Anfrage senden
+static esp_err_t send_page(httpd_req_t *req, const char *status, web_msg_t msg, bool is_error)
+{
+    web_page_info_t info;
+    page_bufs_t bufs;
+    fill_page_info(req, &info, &bufs);
+    info.message = web_msg(info.lang, msg);
+    info.message_is_error = is_error;
+    return send_rendered(req, status, web_page_render, &info);
+}
+
+// Status-Seite, auch im Empfänger-Modus
+static esp_err_t handle_get_status_page(httpd_req_t *req)
+{
+    web_page_info_t info;
+    page_bufs_t bufs;
+    fill_page_info(req, &info, &bufs);
+    return send_rendered(req, "200 OK", web_status_page_render, &info);
 }
 
 static esp_err_t handle_get_root(httpd_req_t *req)
@@ -468,6 +497,7 @@ esp_err_t web_server_start(const web_server_ctx_t *ctx)
         {.uri = "/", .method = HTTP_GET, .handler = handle_get_root},
         {.uri = "/config", .method = HTTP_POST, .handler = handle_post_config},
         {.uri = "/colors", .method = HTTP_GET, .handler = handle_get_colors_page},
+        {.uri = "/status", .method = HTTP_GET, .handler = handle_get_status_page},
         {.uri = "/style.css", .method = HTTP_GET, .handler = handle_get_style},
         {.uri = "/api/colors", .method = HTTP_GET, .handler = handle_get_api_colors},
         {.uri = "/api/colors", .method = HTTP_PUT, .handler = handle_put_api_colors},

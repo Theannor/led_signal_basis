@@ -247,6 +247,7 @@ const char *web_style_css(void)
 typedef enum {
     PAGE_SETTINGS,
     PAGE_COLORS,
+    PAGE_STATUS,
 } page_t;
 
 // Texte der Seiten je Sprache. *_fmt sind printf-Formate; beide Sprachen
@@ -412,23 +413,61 @@ static bool append_head(char *buf, size_t len, size_t *pos, page_t page, bool sh
                         web_lang_t lang)
 {
     const page_text_t *t = page_text(lang);
-    const char *href = page == PAGE_COLORS ? "/colors" : "/";
-    return append(buf, len, pos,
-               "<!DOCTYPE html><html lang=\"%s\"><head><meta charset=\"utf-8\">"
-               "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
-               "<title>" WEB_TITLE "</title><link rel=\"stylesheet\" href=\"/style.css\">"
-               "</head><body><header><span class=\"brand\">" WEB_TITLE "</span>"
-               "<nav>%s%s%s%s<a href=\"/\"%s>%s</a></nav><nav class=\"lang\">",
-               web_lang_code(lang),
-               show_colors ? "<a href=\"/colors\"" : "",
-               show_colors ? (page == PAGE_COLORS ? " class=\"cur\">" : ">") : "",
-               show_colors ? t->colors : "",
-               show_colors ? "</a>" : "",
-               page == PAGE_SETTINGS ? " class=\"cur\"" : "",
-               t->settings) &&
+    const char *href = page == PAGE_COLORS ? "/colors" : (page == PAGE_STATUS ? "/status" : "/");
+    bool ok = append(buf, len, pos,
+                  "<!DOCTYPE html><html lang=\"%s\"><head><meta charset=\"utf-8\">"
+                  "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+                  "<title>" WEB_TITLE "</title><link rel=\"stylesheet\" href=\"/style.css\">"
+                  "</head><body><header><span class=\"brand\">" WEB_TITLE "</span><nav>",
+                  web_lang_code(lang));
+    if (ok && show_colors) {
+        ok = append(buf, len, pos, "<a href=\"/colors\"%s>%s</a>",
+                    page == PAGE_COLORS ? " class=\"cur\"" : "", t->colors);
+    }
+    return ok &&
+           append(buf, len, pos,
+                  "<a href=\"/status\"%s>%s</a><a href=\"/\"%s>%s</a></nav><nav class=\"lang\">",
+                  page == PAGE_STATUS ? " class=\"cur\"" : "", t->status,
+                  page == PAGE_SETTINGS ? " class=\"cur\"" : "", t->settings) &&
            append_lang_link(buf, len, pos, WEB_LANG_DE, lang, href) &&
            append_lang_link(buf, len, pos, WEB_LANG_EN, lang, href) &&
            append(buf, len, pos, "</nav></header><main>");
+}
+
+int web_status_page_render(char *buf, size_t len, const web_page_info_t *info)
+{
+    if (buf == NULL || len == 0 || info == NULL) {
+        return -1;
+    }
+    const page_text_t *t = page_text(info->lang);
+
+    // Texte maskieren (Hostname kommt vom Benutzer)
+    char ip[64], hostname[200], version[96];
+    char own_mac[ESPNOW_MAC_STR_LEN];
+    if (!web_html_escape(info->ip ? info->ip : "-", ip, sizeof(ip)) ||
+        !web_html_escape(info->hostname, hostname, sizeof(hostname)) ||
+        !web_html_escape(info->own_mac, own_mac, sizeof(own_mac)) ||
+        !web_html_escape(info->version, version, sizeof(version))) {
+        return -1;
+    }
+
+    size_t pos = 0;
+    bool ok = append_head(buf, len, &pos, PAGE_STATUS, !info->receiver_mode, info->lang) &&
+              append(buf, len, &pos,
+                     "<h1>%s</h1><div class=\"card\"><dl>"
+                     "<dt>%s</dt><dd>%s</dd><dt>IP</dt><dd>%s</dd><dt>Hostname</dt><dd>%s</dd>",
+                     t->status, t->mode,
+                     info->client_mode ? t->mode_client
+                                       : (info->receiver_mode ? t->mode_ap_receiver : t->mode_ap),
+                     ip, hostname);
+    if (ok && info->own_mac != NULL) {
+        ok = append(buf, len, &pos, "<dt>%s</dt><dd>%s</dd>", t->espnow_mac, own_mac);
+    }
+    if (ok && info->version != NULL) {
+        ok = append(buf, len, &pos, "<dt>%s</dt><dd>%s</dd>", t->version, version);
+    }
+    ok = ok && append(buf, len, &pos, "</dl></div></main></body></html>");
+    return ok ? (int)pos : -1;
 }
 
 int web_page_render(char *buf, size_t len, const web_page_info_t *info)
@@ -439,18 +478,16 @@ int web_page_render(char *buf, size_t len, const web_page_info_t *info)
     const page_text_t *t = page_text(info->lang);
 
     // Alle Texte vor dem Einsetzen maskieren (SSID darf z. B. < oder " enthalten)
-    char ip[64], hostname[200], ssid[200], ble_name[128], message[400], version[96];
+    char hostname[200], ssid[200], ble_name[128], message[400];
     // MAC-Texte enthalten nur Hex-Ziffern, Doppelpunkte und Kommas
     char own_mac[ESPNOW_MAC_STR_LEN], gateway[ESPNOW_MAC_STR_LEN], peers[ESPNOW_PEER_LIST_STR_MAX];
-    if (!web_html_escape(info->ip ? info->ip : "-", ip, sizeof(ip)) ||
-        !web_html_escape(info->own_mac, own_mac, sizeof(own_mac)) ||
+    if (!web_html_escape(info->own_mac, own_mac, sizeof(own_mac)) ||
         !web_html_escape(info->espnow_gateway, gateway, sizeof(gateway)) ||
         !web_html_escape(info->espnow_peers, peers, sizeof(peers)) ||
         !web_html_escape(info->ble_name, ble_name, sizeof(ble_name)) ||
         !web_html_escape(info->hostname, hostname, sizeof(hostname)) ||
         !web_html_escape(info->ssid, ssid, sizeof(ssid)) ||
-        !web_html_escape(info->message, message, sizeof(message)) ||
-        !web_html_escape(info->version, version, sizeof(version))) {
+        !web_html_escape(info->message, message, sizeof(message))) {
         return -1;
     }
 
@@ -461,20 +498,6 @@ int web_page_render(char *buf, size_t len, const web_page_info_t *info)
         ok = append(buf, len, &pos, "<p class=\"msg%s\">%s</p>",
                     info->message_is_error ? " err" : "", message);
     }
-    ok = ok && append(buf, len, &pos,
-        "<div class=\"card\"><h2>%s</h2><dl>"
-        "<dt>%s</dt><dd>%s</dd><dt>IP</dt><dd>%s</dd><dt>Hostname</dt><dd>%s</dd>",
-        t->status, t->mode,
-        info->client_mode ? t->mode_client
-                          : (info->receiver_mode ? t->mode_ap_receiver : t->mode_ap),
-        ip, hostname);
-    if (ok && info->own_mac != NULL) {
-        ok = append(buf, len, &pos, "<dt>%s</dt><dd>%s</dd>", t->espnow_mac, own_mac);
-    }
-    if (ok && info->version != NULL) {
-        ok = append(buf, len, &pos, "<dt>%s</dt><dd>%s</dd>", t->version, version);
-    }
-    ok = ok && append(buf, len, &pos, "</dl></div>");
     ok = ok && append(buf, len, &pos,
         "<form class=\"card\" method=\"post\" action=\"/config\"><h2>%s</h2>"
         "<label>%s<input type=\"text\" name=\"ssid\" maxlength=\"32\" value=\"%s\"></label>"

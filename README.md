@@ -60,12 +60,14 @@ search pulse) still show while off.
 | Client | `http://<hostname>.local` (default `http://led-signal-basis.local`) or the IP from your router |
 | Access point | `http://192.168.4.1` or `http://<hostname>.local` |
 
-A menu at the top switches between two pages:
+A menu at the top switches between three pages:
 
 - **Farben** (`/colors`): the color palette as round color swatches. Click a
   swatch to pick its color, "×" removes it, the dashed "+" adds a random
   color, then "Speichern". The page itself uses the REST API below.
-- **Einstellungen** (`/`): status and Wi-Fi settings, see below.
+- **Status** (`/status`): mode, IP address, hostname, ESP-NOW MAC address and
+  firmware version.
+- **Einstellungen** (`/`): Wi-Fi and device settings, see below.
 
 The pages are in German or English. By default the device follows the
 browser's language (`Accept-Language`): German if the browser prefers German
@@ -73,13 +75,13 @@ over English, English otherwise, and German when the browser sends no language
 at all. The **DE | EN** switch in the header overrides this for that browser;
 it stores the choice in a cookie (`lang`, kept for one year). Messages after
 saving and the `error` texts of the REST API use the same language. The page
-names below are the German ones; in English they are **Colors** and **Settings**.
+names below are the German ones; in English they are **Colors**, **Status** and **Settings**.
 
-Both pages share one stylesheet, `/style.css`, stored in flash and cached by
+All pages share one stylesheet, `/style.css`, stored in flash and cached by
 the browser for an hour. It follows the light/dark setting of the device and
 needs no internet (no external fonts or libraries).
 
-The Einstellungen page shows the mode, IP address and hostname, and has a form for:
+The Einstellungen page has a form for:
 
 - **Wi-Fi (SSID)**: the network to join. Empty = always access point.
 - **Wi-Fi password**: empty = keep the saved one. Tick "offenes WLAN" for a
@@ -91,7 +93,7 @@ printable ASCII only, so no umlauts; default `LED Signal`). It has its own
 "Speichern und neu starten" button, and the new name is used after the restart.
 
 A third card, **ESP-NOW**, sets the role of the device (see [ESP-NOW](#esp-now))
-and shows its own ESP-NOW MAC address, which is also listed in the status card.
+and shows its own ESP-NOW MAC address, which is also listed on the Status page.
 
 A fourth card, **LED-Strip**, sets the data pin and the number of LEDs. It is
 shown in every mode, also on ESP-NOW receivers. The pin is picked from a list
@@ -326,7 +328,7 @@ features. The part after `+` (commit, uncommitted changes) is a PEP 440
 *local version*.
 
 The version appears in the boot log (`main: led_signal_basis Version 2026.1`),
-in the *Status* card of the settings page, and at `GET /api/version`.
+on the *Status* page, and at `GET /api/version`.
 CMake only reads the tag when the project is configured: after setting a new
 tag, run `idf.py reconfigure` (or a clean build) so the version is updated.
 

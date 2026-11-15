@@ -78,12 +78,52 @@ static void test_render_contains_info_and_form(void)
     int n = web_page_render(buf, sizeof(buf), &info);
     TEST_ASSERT_GREATER_THAN(0, n);
     TEST_ASSERT_EQUAL_size_t((size_t)n, strlen(buf));
-    TEST_ASSERT_NOT_NULL(strstr(buf, "WLAN-Client"));
-    TEST_ASSERT_NOT_NULL(strstr(buf, "192.168.1.50"));
     TEST_ASSERT_NOT_NULL(strstr(buf, "value=\"Heim\""));
     TEST_ASSERT_NOT_NULL(strstr(buf, "value=\"led-signal-basis\""));
     TEST_ASSERT_NOT_NULL(strstr(buf, "action=\"/config\""));
     TEST_ASSERT_NULL(strstr(buf, "class=\"msg"));
+    // Statuswerte stehen auf der eigenen Status-Seite
+    TEST_ASSERT_NULL(strstr(buf, "<dl>"));
+    TEST_ASSERT_NULL(strstr(buf, "192.168.1.50"));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "<a href=\"/status\">Status</a>"));
+
+    n = web_status_page_render(buf, sizeof(buf), &info);
+    TEST_ASSERT_GREATER_THAN(0, n);
+    TEST_ASSERT_EQUAL_size_t((size_t)n, strlen(buf));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "<h1>Status</h1>"));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "<dt>Modus</dt><dd>WLAN-Client</dd>"));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "<dt>IP</dt><dd>192.168.1.50</dd>"));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "<dt>Hostname</dt><dd>led-signal-basis</dd>"));
+    TEST_ASSERT_NULL(strstr(buf, "<form"));
+}
+
+static void test_status_page_menu_and_escape(void)
+{
+    char buf[4096];
+    web_page_info_t info = {
+        .client_mode = false, .ip = NULL, .hostname = "<h>", .ssid = "Heim",
+    };
+    TEST_ASSERT_GREATER_THAN(0, web_status_page_render(buf, sizeof(buf), &info));
+    // Menü: Farben | Status | Einstellungen, Status markiert, Schalter führt auf /status
+    TEST_ASSERT_NOT_NULL(strstr(buf, "<nav><a href=\"/colors\">Farben</a>"
+                                     "<a href=\"/status\" class=\"cur\">Status</a>"
+                                     "<a href=\"/\">Einstellungen</a></nav>"));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "<a href=\"/status\" title=\"English\""));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "<dt>Modus</dt><dd>Access Point</dd>"));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "<dt>IP</dt><dd>-</dd>"));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "<dd>&lt;h&gt;</dd>"));
+    TEST_ASSERT_NULL(strstr(buf, "Heim"));
+
+    // Empfänger-Modus: Menü ohne Farben, aber mit Status
+    info.receiver_mode = true;
+    TEST_ASSERT_GREATER_THAN(0, web_status_page_render(buf, sizeof(buf), &info));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "<nav><a href=\"/status\" class=\"cur\">Status</a>"));
+    TEST_ASSERT_NULL(strstr(buf, "/colors"));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "Access Point, danach ESP-NOW-Empfänger"));
+
+    TEST_ASSERT_EQUAL_INT(-1, web_status_page_render(buf, 100, &info));
+    TEST_ASSERT_EQUAL_INT(-1, web_status_page_render(NULL, 10, &info));
+    TEST_ASSERT_EQUAL_INT(-1, web_status_page_render(buf, sizeof(buf), NULL));
 }
 
 static void test_render_escapes_and_shows_error(void)
@@ -94,7 +134,6 @@ static void test_render_escapes_and_shows_error(void)
         .ssid = "\"><script>", .message = "Fehler <1>", .message_is_error = true,
     };
     TEST_ASSERT_GREATER_THAN(0, web_page_render(buf, sizeof(buf), &info));
-    TEST_ASSERT_NOT_NULL(strstr(buf, "Access Point"));
     TEST_ASSERT_NULL(strstr(buf, "<script>"));
     TEST_ASSERT_NOT_NULL(strstr(buf, "&quot;&gt;&lt;script&gt;"));
     TEST_ASSERT_NOT_NULL(strstr(buf, "class=\"msg err\">Fehler &lt;1&gt;"));
@@ -149,6 +188,7 @@ void run_web_form_tests(void)
     RUN_TEST(test_escape_too_small);
     RUN_TEST(test_render_contains_info_and_form);
     RUN_TEST(test_render_escapes_and_shows_error);
+    RUN_TEST(test_status_page_menu_and_escape);
     RUN_TEST(test_render_too_small_buffer);
     RUN_TEST(test_trim_both_ends);
     RUN_TEST(test_trim_keeps_inner_spaces);

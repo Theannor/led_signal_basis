@@ -233,7 +233,7 @@ static void test_page_english(void)
     TEST_ASSERT_NOT_NULL(strstr(buf, "<h1>Settings</h1>"));
     TEST_ASSERT_NOT_NULL(strstr(buf, "<a href=\"/\" class=\"cur\">Settings</a>"));
     TEST_ASSERT_NOT_NULL(strstr(buf, "<a href=\"/colors\">Colors</a>"));
-    TEST_ASSERT_NOT_NULL(strstr(buf, "<dt>Mode</dt><dd>Wi-Fi client</dd>"));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "<a href=\"/status\">Status</a>"));
     TEST_ASSERT_NOT_NULL(strstr(buf, "Save and restart"));
     TEST_ASSERT_NOT_NULL(strstr(buf, "1 to 20 characters"));
     TEST_ASSERT_NOT_NULL(strstr(buf, "Own MAC: aa:bb:cc:dd:ee:ff. At most 10 receivers."));
@@ -271,6 +271,28 @@ static void test_page_lang_switch(void)
     // Auf der Farben-Seite führt der Schalter zurück auf /colors
     TEST_ASSERT_GREATER_THAN(0, web_colors_page_render_lang(buf, sizeof(buf), WEB_LANG_DE));
     TEST_ASSERT_NOT_NULL(strstr(buf, "<a href=\"/colors\" title=\"English\""));
+}
+
+static void test_status_page_english(void)
+{
+    char buf[4096];
+    web_page_info_t info = {
+        .lang = WEB_LANG_EN, .client_mode = true, .ip = "1.2.3.4", .hostname = "h",
+        .own_mac = "aa:bb:cc:dd:ee:ff", .version = "2026.1",
+    };
+    TEST_ASSERT_GREATER_THAN(0, web_status_page_render(buf, sizeof(buf), &info));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "<html lang=\"en\">"));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "<h1>Status</h1>"));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "<a href=\"/status\" class=\"cur\">Status</a>"));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "<dt>Mode</dt><dd>Wi-Fi client</dd>"));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "<dt>ESP-NOW MAC</dt><dd>aa:bb:cc:dd:ee:ff</dd>"));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "<a href=\"/status\" title=\"Deutsch\""));
+    TEST_ASSERT_NULL(strstr(buf, "Einstellungen"));
+    TEST_ASSERT_NULL(strstr(buf, "Modus"));
+    info.client_mode = false;
+    info.receiver_mode = true;
+    TEST_ASSERT_GREATER_THAN(0, web_status_page_render(buf, sizeof(buf), &info));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "<dd>Access point, then ESP-NOW receiver</dd>"));
 }
 
 static void test_colors_page_english(void)
@@ -367,6 +389,7 @@ void run_web_lang_tests(void)
     RUN_TEST(test_page_english);
     RUN_TEST(test_page_german_default);
     RUN_TEST(test_page_lang_switch);
+    RUN_TEST(test_status_page_english);
     RUN_TEST(test_colors_page_english);
     RUN_TEST(test_server_uses_cookie);
     RUN_TEST(test_server_uses_accept_language);
