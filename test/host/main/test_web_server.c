@@ -13,6 +13,7 @@ static int s_dummy_server;
 // Vom Stub gemerkte Handler
 static esp_err_t (*s_get_handler)(httpd_req_t *req);
 static esp_err_t (*s_get_status)(httpd_req_t *req);
+static esp_err_t (*s_get_root)(httpd_req_t *req);
 static esp_err_t (*s_post_handler)(httpd_req_t *req);
 
 // Body der simulierten Anfrage und gesendete Antwort
@@ -30,8 +31,10 @@ static esp_err_t start_stub(httpd_handle_t *handle, const httpd_config_t *config
 
 static esp_err_t register_stub(httpd_handle_t handle, const httpd_uri_t *uri, int cmock_num_calls)
 {
-    if (strcmp(uri->uri, "/") == 0 && uri->method == HTTP_GET) {
+    if (strcmp(uri->uri, "/wifi") == 0 && uri->method == HTTP_GET) {
         s_get_handler = uri->handler;
+    } else if (strcmp(uri->uri, "/") == 0 && uri->method == HTTP_GET) {
+        s_get_root = uri->handler;
     } else if (strcmp(uri->uri, "/status") == 0 && uri->method == HTTP_GET) {
         s_get_status = uri->handler;
     } else if (strcmp(uri->uri, "/config") == 0 && uri->method == HTTP_POST) {
@@ -142,6 +145,20 @@ static void test_get_shows_page(void)
     TEST_ASSERT_EQUAL_STRING("200 OK", s_status);
     TEST_ASSERT_NOT_NULL(strstr(s_sent, "value=\"Heim\""));
     TEST_ASSERT_NULL(strstr(s_sent, "altesPW123"));
+    stop_server();
+}
+
+static void test_start_page_client_is_colors(void)
+{
+    // Als WLAN-Client zeigt die Startseite die Farben
+    start_server();
+    httpd_req_t req = {0};
+    TEST_ASSERT_NOT_NULL(s_get_root);
+    TEST_ASSERT_EQUAL(ESP_OK, s_get_root(&req));
+    TEST_ASSERT_EQUAL_STRING("200 OK", s_status);
+    TEST_ASSERT_NOT_NULL(strstr(s_sent, "<h1>Farben</h1>"));
+    TEST_ASSERT_NOT_NULL(strstr(s_sent, "<a href=\"/colors\" class=\"cur\">Farben</a>"));
+    TEST_ASSERT_NULL(strstr(s_sent, "action=\"/config\""));
     stop_server();
 }
 
@@ -258,6 +275,7 @@ static void test_post_keeps_spaces_in_password(void)
 void run_web_server_tests(void)
 {
     RUN_TEST(test_get_shows_page);
+    RUN_TEST(test_start_page_client_is_colors);
     RUN_TEST(test_get_status_page);
     RUN_TEST(test_post_saves_and_restarts);
     RUN_TEST(test_post_empty_password_keeps_old);

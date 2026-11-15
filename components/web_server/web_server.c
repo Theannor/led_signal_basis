@@ -154,8 +154,19 @@ static esp_err_t handle_get_status_page(httpd_req_t *req)
     return send_rendered(req, "200 OK", web_status_page_render, &info);
 }
 
-// Unterseiten der Einstellungen: WLAN (/), Bluetooth, ESP-NOW, LED-Strip
+static esp_err_t handle_get_colors_page(httpd_req_t *req);
+
+// Startseite: als WLAN-Client die Farben, als Access Point (auch Empfänger) die WLAN-Einstellungen
 static esp_err_t handle_get_root(httpd_req_t *req)
+{
+    if (s_ctx.client_mode && !s_ctx.receiver_mode) {
+        return handle_get_colors_page(req);
+    }
+    return send_page(req, "200 OK", WEB_SETTINGS_WIFI, WEB_MSG_NONE, false);
+}
+
+// Unterseiten der Einstellungen: WLAN, Bluetooth, ESP-NOW, LED-Strip
+static esp_err_t handle_get_wifi_page(httpd_req_t *req)
 {
     return send_page(req, "200 OK", WEB_SETTINGS_WIFI, WEB_MSG_NONE, false);
 }
@@ -513,6 +524,7 @@ esp_err_t web_server_start(const web_server_ctx_t *ctx)
 
     const httpd_uri_t uris[] = {
         {.uri = "/", .method = HTTP_GET, .handler = handle_get_root},
+        {.uri = "/wifi", .method = HTTP_GET, .handler = handle_get_wifi_page},
         {.uri = "/config", .method = HTTP_POST, .handler = handle_post_config},
         {.uri = "/colors", .method = HTTP_GET, .handler = handle_get_colors_page},
         {.uri = "/status", .method = HTTP_GET, .handler = handle_get_status_page},

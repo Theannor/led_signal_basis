@@ -60,6 +60,10 @@ search pulse) still show while off.
 | Client | `http://<hostname>.local` (default `http://led-signal-basis.local`) or the IP from your router |
 | Access point | `http://192.168.4.1` or `http://<hostname>.local` |
 
+The start page (`/`) depends on the mode: as a Wi-Fi client it shows the
+**Farben** page, as an access point (also on ESP-NOW receivers) the **WLAN**
+settings, so a new device can be set up right away.
+
 A menu at the top switches between three pages:
 
 - **Farben** (`/colors`): the color palette as round color swatches. Click a
@@ -82,7 +86,7 @@ the browser for an hour. It follows the light/dark setting of the device and
 needs no internet (no external fonts or libraries).
 
 The Einstellungen menu item opens a second menu row (only on the settings
-pages) with one subpage per topic: **WLAN** (`/`), **Bluetooth** (`/ble`),
+pages) with one subpage per topic: **WLAN** (`/wifi`), **Bluetooth** (`/ble`),
 **ESP-NOW** (`/espnow`) and **LED-Strip** (`/led`). A subpage is only listed
 when the device has that feature. Each subpage has its own "Speichern und neu
 starten" button; after saving, the same subpage is shown again with the result.
@@ -278,7 +282,7 @@ speed, default hostname, default Bluetooth name) are `#define`s at the top of `m
 | `components/wifi_ap/` | Starts the Wi-Fi access point, counts connected devices, remembers when the last one left |
 | `components/wifi_sta/` | Joins a Wi-Fi as client with timeout, reconnects after drop-outs |
 | `components/net_name/` | mDNS: `<hostname>.local` and the HTTP service; stop again |
-| `components/web_server/` | HTTP server: `GET /`, `/ble`, `/espnow`, `/led` settings subpages, `GET /status` status page, `POST /config` save + restart, `GET /colors` palette page, `GET /style.css` stylesheet, `GET`/`PUT /api/colors` REST API, `POST /ble` Bluetooth name + restart, `POST /espnow` ESP-NOW role + restart, `POST /led` LED pin and count + restart, `GET /api/version` firmware version |
+| `components/web_server/` | HTTP server: `GET /` start page (colors as client, Wi-Fi settings as access point), `GET /wifi`, `/ble`, `/espnow`, `/led` settings subpages, `GET /status` status page, `POST /config` save + restart, `GET /colors` palette page, `GET /style.css` stylesheet, `GET`/`PUT /api/colors` REST API, `POST /ble` Bluetooth name + restart, `POST /espnow` ESP-NOW role + restart, `POST /led` LED pin and count + restart, `GET /api/version` firmware version |
 | `tools/` | `ble_set_colors.py`: example Bluetooth client (Python, bleak); `project_version.cmake`: version number from the Git tag |
 | `test/host/` | Unity + CMock tests that run on the Linux host, no board needed |
 

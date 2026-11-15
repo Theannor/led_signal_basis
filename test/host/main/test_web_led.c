@@ -16,6 +16,7 @@ static int s_dummy_server;
 
 static esp_err_t (*s_get_root)(httpd_req_t *req);
 // GET-Handler der Unterseiten /ble, /espnow, /led
+static esp_err_t (*s_get_wifi)(httpd_req_t *req);
 static esp_err_t (*s_get_ble)(httpd_req_t *req);
 static esp_err_t (*s_get_espnow)(httpd_req_t *req);
 static esp_err_t (*s_get_led)(httpd_req_t *req);
@@ -38,6 +39,8 @@ static esp_err_t register_stub(httpd_handle_t handle, const httpd_uri_t *uri, in
 {
     if (strcmp(uri->uri, "/") == 0 && uri->method == HTTP_GET) {
         s_get_root = uri->handler;
+    } else if (strcmp(uri->uri, "/wifi") == 0 && uri->method == HTTP_GET) {
+        s_get_wifi = uri->handler;
     } else if (strcmp(uri->uri, "/ble") == 0 && uri->method == HTTP_GET) {
         s_get_ble = uri->handler;
     } else if (strcmp(uri->uri, "/espnow") == 0 && uri->method == HTTP_GET) {
@@ -99,7 +102,7 @@ static void start_server(void)
     };
     s_restarts = 0;
     s_sent[0] = s_status[0] = '\0';
-    s_get_root = s_get_ble = s_get_espnow = s_get_led = s_post_led = NULL;
+    s_get_root = s_get_wifi = s_get_ble = s_get_espnow = s_get_led = s_post_led = NULL;
     httpd_start_Stub(start_stub);
     httpd_register_uri_handler_Stub(register_stub);
     // Keine Cookie- und Accept-Language-Header -> deutsche Seiten
@@ -168,7 +171,7 @@ static void check_subpage(esp_err_t (*handler)(httpd_req_t *), const char *actio
     TEST_ASSERT_NOT_NULL(handler);
     TEST_ASSERT_EQUAL(ESP_OK, handler(&req));
     TEST_ASSERT_EQUAL_STRING("200 OK", s_status);
-    TEST_ASSERT_NOT_NULL(strstr(s_sent, "<nav class=\"sub\"><a href=\"/\""));
+    TEST_ASSERT_NOT_NULL(strstr(s_sent, "<nav class=\"sub\"><a href=\"/wifi\""));
     TEST_ASSERT_NOT_NULL(strstr(s_sent, "<a href=\"/ble\""));
     TEST_ASSERT_NOT_NULL(strstr(s_sent, "<a href=\"/espnow\""));
     TEST_ASSERT_NOT_NULL(strstr(s_sent, "<a href=\"/led\""));
@@ -187,12 +190,14 @@ static void check_subpage(esp_err_t (*handler)(httpd_req_t *), const char *actio
 static void test_full_page_fits(void)
 {
     start_server();
-    check_subpage(s_get_root, "/config", "<a href=\"/\" class=\"cur\">WLAN</a>");
+    // Als Access Point ist die Startseite die WLAN-Seite
+    check_subpage(s_get_root, "/config", "<a href=\"/wifi\" class=\"cur\">WLAN</a>");
+    check_subpage(s_get_wifi, "/config", "<a href=\"/wifi\" class=\"cur\">WLAN</a>");
     check_subpage(s_get_ble, "/ble", "<a href=\"/ble\" class=\"cur\">Bluetooth</a>");
     check_subpage(s_get_espnow, "/espnow", "<a href=\"/espnow\" class=\"cur\">ESP-NOW</a>");
     check_subpage(s_get_led, "/led", "<a href=\"/led\" class=\"cur\">LED-Strip</a>");
     // Menü: Einstellungen auf allen Unterseiten markiert
-    TEST_ASSERT_NOT_NULL(strstr(s_sent, "<a href=\"/\" class=\"cur\">Einstellungen</a>"));
+    TEST_ASSERT_NOT_NULL(strstr(s_sent, "<a href=\"/wifi\" class=\"cur\">Einstellungen</a>"));
     stop_server();
 }
 

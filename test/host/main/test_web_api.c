@@ -295,7 +295,7 @@ static void test_colors_page_render(void)
     TEST_ASSERT_NOT_NULL(strstr(buf, "fetch('/api/colors'"));
     TEST_ASSERT_NOT_NULL(strstr(buf, "method:'PUT'"));
     // Menü mit beiden Seiten, Farben markiert
-    TEST_ASSERT_NOT_NULL(strstr(buf, "<a href=\"/\">Einstellungen</a>"));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "<a href=\"/wifi\">Einstellungen</a>"));
     TEST_ASSERT_NOT_NULL(strstr(buf, "<a href=\"/colors\" class=\"cur\">Farben</a>"));
     char small[200];
     TEST_ASSERT_EQUAL_INT(-1, web_colors_page_render(small, sizeof(small)));
@@ -307,7 +307,7 @@ static void test_wifi_page_has_menu(void)
     char buf[4096];
     web_page_info_t info = {.ip = "1.2.3.4", .hostname = "h", .ssid = "s"};
     TEST_ASSERT_GREATER_THAN(0, web_page_render(buf, sizeof(buf), &info));
-    TEST_ASSERT_NOT_NULL(strstr(buf, "<a href=\"/\" class=\"cur\">Einstellungen</a>"));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "<a href=\"/wifi\" class=\"cur\">Einstellungen</a>"));
     TEST_ASSERT_NOT_NULL(strstr(buf, "<a href=\"/colors\">Farben</a>"));
 }
 

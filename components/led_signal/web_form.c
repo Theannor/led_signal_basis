@@ -429,7 +429,7 @@ static bool append_head(char *buf, size_t len, size_t *pos, page_t page, bool sh
     }
     return ok &&
            append(buf, len, pos,
-                  "<a href=\"/status\"%s>%s</a><a href=\"/\"%s>%s</a></nav><nav class=\"lang\">",
+                  "<a href=\"/status\"%s>%s</a><a href=\"/wifi\"%s>%s</a></nav><nav class=\"lang\">",
                   page == PAGE_STATUS ? " class=\"cur\"" : "", t->status,
                   page == PAGE_SETTINGS ? " class=\"cur\"" : "", t->settings) &&
            append_lang_link(buf, len, pos, WEB_LANG_DE, lang, href) &&
@@ -480,7 +480,7 @@ typedef struct {
 } settings_link_t;
 
 static const settings_link_t SETTINGS_LINKS[] = {
-    {WEB_SETTINGS_WIFI, "/"},
+    {WEB_SETTINGS_WIFI, "/wifi"},
     {WEB_SETTINGS_BLE, "/ble"},
     {WEB_SETTINGS_ESPNOW, "/espnow"},
     {WEB_SETTINGS_LED, "/led"},

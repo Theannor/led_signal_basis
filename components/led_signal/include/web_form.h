@@ -22,9 +22,9 @@ void web_form_trim(char *s);
 // Ersetzt & < > " ' durch HTML-Entities. false, wenn out zu klein ist.
 bool web_html_escape(const char *in, char *out, size_t out_len);
 
-// Unterseiten der Einstellungen (Untermenü); Pfade /, /ble, /espnow, /led
+// Unterseiten der Einstellungen (Untermenü); Pfade /wifi, /ble, /espnow, /led
 typedef enum {
-    WEB_SETTINGS_WIFI = 0,   // WLAN und Hostname (/)
+    WEB_SETTINGS_WIFI = 0,   // WLAN und Hostname (/wifi)
     WEB_SETTINGS_BLE,        // Bluetooth-Name (/ble)
     WEB_SETTINGS_ESPNOW,     // ESP-NOW-Rolle (/espnow)
     WEB_SETTINGS_LED,        // LED-Strip (/led)

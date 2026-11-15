@@ -107,7 +107,7 @@ static void test_status_page_menu_and_escape(void)
     // Menü: Farben | Status | Einstellungen, Status markiert, Schalter führt auf /status
     TEST_ASSERT_NOT_NULL(strstr(buf, "<nav><a href=\"/colors\">Farben</a>"
                                      "<a href=\"/status\" class=\"cur\">Status</a>"
-                                     "<a href=\"/\">Einstellungen</a></nav>"));
+                                     "<a href=\"/wifi\">Einstellungen</a></nav>"));
     TEST_ASSERT_NOT_NULL(strstr(buf, "<a href=\"/status\" title=\"English\""));
     TEST_ASSERT_NOT_NULL(strstr(buf, "<dt>Modus</dt><dd>Access Point</dd>"));
     TEST_ASSERT_NOT_NULL(strstr(buf, "<dt>IP</dt><dd>-</dd>"));

@@ -11,7 +11,7 @@ static int s_dummy_server;
 #define FAKE_SERVER ((httpd_handle_t)&s_dummy_server)
 
 // Vom Stub gemerkte Handler
-static esp_err_t (*s_get_root)(httpd_req_t *req);
+static esp_err_t (*s_get_wifi)(httpd_req_t *req);
 static esp_err_t (*s_get_colors)(httpd_req_t *req);
 static esp_err_t (*s_post_config)(httpd_req_t *req);
 static esp_err_t (*s_put_colors)(httpd_req_t *req);
@@ -31,8 +31,8 @@ static esp_err_t start_stub(httpd_handle_t *handle, const httpd_config_t *config
 
 static esp_err_t register_stub(httpd_handle_t handle, const httpd_uri_t *uri, int cmock_num_calls)
 {
-    if (strcmp(uri->uri, "/") == 0) {
-        s_get_root = uri->handler;
+    if (strcmp(uri->uri, "/wifi") == 0) {
+        s_get_wifi = uri->handler;
     } else if (strcmp(uri->uri, "/colors") == 0) {
         s_get_colors = uri->handler;
     } else if (strcmp(uri->uri, "/config") == 0) {
@@ -231,10 +231,10 @@ static void test_page_english(void)
     TEST_ASSERT_GREATER_THAN(0, render_full(buf, sizeof(buf), WEB_LANG_EN, WEB_SETTINGS_WIFI));
     TEST_ASSERT_NOT_NULL(strstr(buf, "<html lang=\"en\">"));
     TEST_ASSERT_NOT_NULL(strstr(buf, "<h1>Settings</h1>"));
-    TEST_ASSERT_NOT_NULL(strstr(buf, "<a href=\"/\" class=\"cur\">Settings</a>"));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "<a href=\"/wifi\" class=\"cur\">Settings</a>"));
     TEST_ASSERT_NOT_NULL(strstr(buf, "<a href=\"/colors\">Colors</a>"));
     TEST_ASSERT_NOT_NULL(strstr(buf, "<a href=\"/status\">Status</a>"));
-    TEST_ASSERT_NOT_NULL(strstr(buf, "<nav class=\"sub\"><a href=\"/\" class=\"cur\">Wi-Fi</a>"
+    TEST_ASSERT_NOT_NULL(strstr(buf, "<nav class=\"sub\"><a href=\"/wifi\" class=\"cur\">Wi-Fi</a>"
                                      "<a href=\"/ble\">Bluetooth</a><a href=\"/espnow\">ESP-NOW</a>"
                                      "<a href=\"/led\">LED strip</a></nav>"));
     TEST_ASSERT_NOT_NULL(strstr(buf, "Save and restart"));
@@ -257,7 +257,7 @@ static void test_page_german_default(void)
     TEST_ASSERT_GREATER_THAN(0, render_full(buf, sizeof(buf), WEB_LANG_DE, WEB_SETTINGS_WIFI));
     TEST_ASSERT_NOT_NULL(strstr(buf, "<html lang=\"de\">"));
     TEST_ASSERT_NOT_NULL(strstr(buf, "<h1>Einstellungen</h1>"));
-    TEST_ASSERT_NOT_NULL(strstr(buf, "<nav class=\"sub\"><a href=\"/\" class=\"cur\">WLAN</a>"));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "<nav class=\"sub\"><a href=\"/wifi\" class=\"cur\">WLAN</a>"));
     TEST_ASSERT_NOT_NULL(strstr(buf, "<a href=\"/led\">LED-Strip</a></nav>"));
     TEST_ASSERT_NULL(strstr(buf, "Save and restart"));
     TEST_ASSERT_GREATER_THAN(0, render_full(buf, sizeof(buf), WEB_LANG_DE, WEB_SETTINGS_BLE));
@@ -274,10 +274,10 @@ static void test_page_lang_switch(void)
     // Deutsch markiert, Englisch setzt das Cookie und lädt die Seite neu
     TEST_ASSERT_GREATER_THAN(0, render_full(buf, sizeof(buf), WEB_LANG_DE, WEB_SETTINGS_WIFI));
     TEST_ASSERT_NOT_NULL(strstr(buf, "<nav class=\"lang\"><a class=\"cur\" title=\"Deutsch\">DE</a>"
-                                     "<a href=\"/\" title=\"English\" onclick=\"document.cookie="
+                                     "<a href=\"/wifi\" title=\"English\" onclick=\"document.cookie="
                                      "'lang=en;path=/;max-age=31536000;samesite=lax'\">EN</a></nav>"));
     TEST_ASSERT_GREATER_THAN(0, render_full(buf, sizeof(buf), WEB_LANG_EN, WEB_SETTINGS_WIFI));
-    TEST_ASSERT_NOT_NULL(strstr(buf, "<a href=\"/\" title=\"Deutsch\" onclick=\"document.cookie="
+    TEST_ASSERT_NOT_NULL(strstr(buf, "<a href=\"/wifi\" title=\"Deutsch\" onclick=\"document.cookie="
                                      "'lang=de;path=/;max-age=31536000;samesite=lax'\">DE</a>"));
     TEST_ASSERT_NOT_NULL(strstr(buf, "<a class=\"cur\" title=\"English\">EN</a>"));
     // Auf einer Unterseite führt der Schalter zurück auf diese Unterseite
@@ -332,13 +332,13 @@ static void test_server_uses_cookie(void)
 {
     // Cookie des Schalters schlägt die Browsersprache
     start_server("theme=x; lang=en", "de-DE,de;q=0.9");
-    request(s_get_root, "");
+    request(s_get_wifi, "");
     TEST_ASSERT_EQUAL_STRING("200 OK", s_status);
     TEST_ASSERT_NOT_NULL(strstr(s_sent, "<h1>Settings</h1>"));
     stop_server();
 
     start_server("lang=de", "en-US");
-    request(s_get_root, "");
+    request(s_get_wifi, "");
     TEST_ASSERT_NOT_NULL(strstr(s_sent, "<h1>Einstellungen</h1>"));
     stop_server();
 }
@@ -346,7 +346,7 @@ static void test_server_uses_cookie(void)
 static void test_server_uses_accept_language(void)
 {
     start_server(NULL, "en-US,en;q=0.9,de;q=0.8");
-    request(s_get_root, "");
+    request(s_get_wifi, "");
     TEST_ASSERT_NOT_NULL(strstr(s_sent, "<h1>Settings</h1>"));
     request(s_get_colors, "");
     TEST_ASSERT_EQUAL_STRING("200 OK", s_status);
@@ -354,7 +354,7 @@ static void test_server_uses_accept_language(void)
     stop_server();
 
     start_server(NULL, NULL);
-    request(s_get_root, "");
+    request(s_get_wifi, "");
     TEST_ASSERT_NOT_NULL(strstr(s_sent, "<h1>Einstellungen</h1>"));
     stop_server();
 }
@@ -364,7 +364,7 @@ static void test_server_long_accept_language(void)
     // Längere Header werden abgeschnitten, der Anfang reicht
     start_server(NULL, "en-US,en;q=0.9,fr-FR;q=0.8,fr;q=0.7,it-IT;q=0.6,it;q=0.5,es-ES;q=0.4,"
                        "es;q=0.3,nl-NL;q=0.2,nl;q=0.1,pt-PT;q=0.1,pt;q=0.1,pl-PL;q=0.1,pl;q=0.1");
-    request(s_get_root, "");
+    request(s_get_wifi, "");
     TEST_ASSERT_NOT_NULL(strstr(s_sent, "<h1>Settings</h1>"));
     stop_server();
 }

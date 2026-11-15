@@ -35,7 +35,9 @@ typedef struct {
 } web_server_ctx_t;
 
 // Startet den HTTP-Server mit
-//   GET  /        Einstellungen-Seite
+//   GET  /        Startseite: als WLAN-Client die Farben, sonst die WLAN-Einstellungen
+//   GET  /wifi, /ble, /espnow, /led   Unterseiten der Einstellungen
+//   GET  /status  Status-Seite
 //   POST /config  Einstellungen prüfen, speichern, Neustart anstoßen
 //   GET  /colors       Farben-Seite
 //   GET  /style.css    gemeinsames Stylesheet (Cache-Control: max-age=3600)

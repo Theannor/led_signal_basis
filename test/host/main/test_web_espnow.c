@@ -311,6 +311,11 @@ static void test_receiver_mode_blocks_colors(void)
     TEST_ASSERT_NULL(strstr(s_sent, "href=\"/colors\""));
     TEST_ASSERT_NOT_NULL(strstr(s_sent, "value=\"aa:bb:cc:dd:ee:02\""));
 
+    // Startseite des Empfängers: WLAN-Einstellungen, keine Farben
+    TEST_ASSERT_EQUAL(ESP_OK, s_get_root(&req));
+    TEST_ASSERT_EQUAL_STRING("200 OK", s_status);
+    TEST_ASSERT_NOT_NULL(strstr(s_sent, "action=\"/config\""));
+
     // Status-Seite bleibt auch für Empfänger erreichbar
     TEST_ASSERT_NOT_NULL(s_get_status);
     TEST_ASSERT_EQUAL(ESP_OK, s_get_status(&req));
