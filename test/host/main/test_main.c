@@ -44,6 +44,7 @@ void run_web_espnow_tests(void);
 void run_led_config_tests(void);
 void run_led_store_tests(void);
 void run_web_led_tests(void);
+void run_web_version_tests(void);
 
 void setUp(void)
 {
@@ -120,5 +121,6 @@ void app_main(void)
     run_led_config_tests();
     run_led_store_tests();
     run_web_led_tests();
+    run_web_version_tests();
     exit(UNITY_END());
 }

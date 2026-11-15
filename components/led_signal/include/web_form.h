@@ -26,6 +26,7 @@ typedef struct {
     bool client_mode;        // true = als Client im WLAN, false = eigener AP
     const char *ip;          // aktuelle IP-Adresse
     const char *hostname;    // aktueller Hostname
+    const char *version;     // Firmware-Version (NULL = ohne Zeile)
     const char *ssid;        // gespeicherte Client-SSID
     const char *ble_name;    // Bluetooth-Gerätename (NULL = ohne Bluetooth-Bereich)
     const char *message;     // Hinweis oben auf der Seite
@@ -51,6 +52,10 @@ int web_page_render(char *buf, size_t len, const web_page_info_t *info);
 // Palette per JavaScript über GET/PUT /api/colors.
 // Gibt die Länge zurück, -1 wenn buf zu klein ist.
 int web_colors_page_render(char *buf, size_t len);
+
+// Baut {"version":"<version>"} nach buf. Gibt die Länge zurück, -1 wenn buf
+// zu klein ist oder version NULL ist bzw. Anführungszeichen, Backslash oder Steuerzeichen enthält.
+int web_version_json(const char *version, char *buf, size_t len);
 
 // Gemeinsames Stylesheet aller Seiten (konstanter Text im Flash)
 const char *web_style_css(void);

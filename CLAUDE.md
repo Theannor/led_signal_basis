@@ -44,6 +44,10 @@ Firmware for a WS2812B LED signal lamp, built with ESP-IDF.
 - No `git push`; at most `git commit`, and only if all existing tests pass.
 - Do not change tests without asking.
 - Always create new functions together with tests.
+- Versioning: PEP 440, releases `YYYY.N`, set only by the Git tag `vYYYY.N`
+  (`tools/project_version.cmake`). In between, builds are automatically
+  `<next>.devN+g<hash>`. Never write version numbers into code or files by hand;
+  do not create tags without being asked. After a new tag: `idf.py reconfigure`.
 - An English description for humans is kept in README.md and kept up to date.
 
 ## Code Style

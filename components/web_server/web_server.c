@@ -19,6 +19,7 @@
 #define WEB_PAGE_MAX   6144
 #define WEB_URI_MAX    12    // Platz für Seiten-Handler
 #define WEB_JSON_MAX   256   // reicht für LED_PALETTE_MAX Farben
+#define WEB_VERSION_UNKNOWN  "0+unknown"   // wenn ctx.version fehlt
 #define WEB_CSS_CACHE  "max-age=3600"  // Stylesheet eine Stunde im Browser-Cache
 
 // Zahl als Text in String-Literalen
@@ -69,6 +70,7 @@ static esp_err_t send_page(httpd_req_t *req, const char *status, const char *mes
         .client_mode = s_ctx.client_mode,
         .ip = ip,
         .hostname = s_ctx.config.hostname,
+        .version = s_ctx.version,
         .ssid = s_ctx.config.ssid,
         .ble_name = s_ctx.ble_name[0] != '\0' ? s_ctx.ble_name : NULL,
         .message = message,
@@ -149,6 +151,18 @@ static esp_err_t send_json(httpd_req_t *req, const char *status, const char *jso
     httpd_resp_set_status(req, status);
     httpd_resp_set_type(req, "application/json");
     return httpd_resp_send(req, json, (ssize_t)strlen(json));
+}
+
+// Firmware-Version als {"version":"..."} senden
+static esp_err_t handle_get_api_version(httpd_req_t *req)
+{
+    char json[WEB_JSON_MAX];
+    const char *version = s_ctx.version != NULL ? s_ctx.version : WEB_VERSION_UNKNOWN;
+    if (web_version_json(version, json, sizeof(json)) < 0) {
+        ESP_LOGE(TAG, "Version passt nicht ins JSON");
+        return send_json(req, "500 Internal Server Error", "{\"error\":\"Version ungültig\"}");
+    }
+    return send_json(req, "200 OK", json);
 }
 
 // Aktuelle Palette als {"colors":[...]} senden
@@ -443,6 +457,7 @@ esp_err_t web_server_start(const web_server_ctx_t *ctx)
         {.uri = "/ble", .method = HTTP_POST, .handler = handle_post_ble},
         {.uri = "/espnow", .method = HTTP_POST, .handler = handle_post_espnow},
         {.uri = "/led", .method = HTTP_POST, .handler = handle_post_led},
+        {.uri = "/api/version", .method = HTTP_GET, .handler = handle_get_api_version},
     };
     for (size_t i = 0; i < sizeof(uris) / sizeof(uris[0]) && err == ESP_OK; i++) {
         err = httpd_register_uri_handler(s_server, &uris[i]);

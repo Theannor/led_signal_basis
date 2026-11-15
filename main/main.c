@@ -6,6 +6,7 @@
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 #include "bootloader_random.h"
+#include "esp_app_desc.h"
 #include "esp_event.h"
 #include "esp_mac.h"
 #include "esp_log.h"
@@ -376,6 +377,10 @@ static void init_nvs(void)
 
 void app_main(void)
 {
+    // Firmware-Version (YYYY.N nach PEP 440, aus dem Git-Tag beim Build)
+    const esp_app_desc_t *app = esp_app_get_description();
+    ESP_LOGI(TAG, "%s Version %s", app->project_name, app->version);
+
     init_nvs();
 
     const led_config_t led_defaults = {.gpio = LED_GPIO_DEFAULT, .count = LED_COUNT_DEFAULT};
@@ -452,6 +457,7 @@ void app_main(void)
         .espnow_window_s = ESPNOW_WINDOW_MS / 1000,
         .led = s_led,
         .led_gpio_mask = LED_GPIO_ALLOWED,
+        .version = app->version,
     };
     memcpy(web.own_mac, own_mac, sizeof(web.own_mac));
     // Empfänger haben kein Bluetooth -> Bereich auf der Seite weglassen

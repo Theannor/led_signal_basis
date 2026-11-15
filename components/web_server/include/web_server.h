@@ -31,6 +31,7 @@ typedef struct {
     unsigned espnow_window_s;                  // Einstellungsfenster eines Empfängers (nur Anzeige)
     led_config_t led;                          // gespeicherter GPIO und Anzahl der LEDs
     uint64_t led_gpio_mask;                    // wählbare GPIOs (0 = ohne LED-Bereich)
+    const char *version;                       // Firmware-Version, muss gültig bleiben (NULL = unbekannt)
 } web_server_ctx_t;
 
 // Startet den HTTP-Server mit
@@ -43,6 +44,7 @@ typedef struct {
 //   POST /ble          Bluetooth-Gerätenamen prüfen, speichern, Neustart anstoßen
 //   POST /espnow       ESP-NOW-Rolle und MAC-Adressen prüfen, speichern, Neustart anstoßen
 //   POST /led          GPIO und Anzahl der LEDs prüfen, speichern, Neustart anstoßen
+//   GET  /api/version  Firmware-Version als {"version":"2026.1"}
 // Im Empfänger-Modus antworten /colors und PUT /api/colors mit 403.
 esp_err_t web_server_start(const web_server_ctx_t *ctx);
 

@@ -123,6 +123,11 @@ curl -X PUT -H 'Content-Type: application/json' \
      http://led-signal-basis.local/api/colors
 ```
 
+### REST API: version
+
+`GET /api/version` returns the firmware version, e.g. `{"version":"2026.1"}`
+(see [Versioning](#versioning)).
+
 ## Bluetooth
 
 The ESP advertises as a Bluetooth LE device (default name `LED Signal`, change
@@ -257,8 +262,8 @@ speed, default hostname, default Bluetooth name) are `#define`s at the top of `m
 | `components/wifi_ap/` | Starts the Wi-Fi access point, counts connected devices, remembers when the last one left |
 | `components/wifi_sta/` | Joins a Wi-Fi as client with timeout, reconnects after drop-outs |
 | `components/net_name/` | mDNS: `<hostname>.local` and the HTTP service; stop again |
-| `components/web_server/` | HTTP server: `GET /` settings page, `POST /config` save + restart, `GET /colors` palette page, `GET /style.css` stylesheet, `GET`/`PUT /api/colors` REST API, `POST /ble` Bluetooth name + restart, `POST /espnow` ESP-NOW role + restart, `POST /led` LED pin and count + restart |
-| `tools/` | `ble_set_colors.py`: example Bluetooth client (Python, bleak) |
+| `components/web_server/` | HTTP server: `GET /` settings page, `POST /config` save + restart, `GET /colors` palette page, `GET /style.css` stylesheet, `GET`/`PUT /api/colors` REST API, `POST /ble` Bluetooth name + restart, `POST /espnow` ESP-NOW role + restart, `POST /led` LED pin and count + restart, `GET /api/version` firmware version |
+| `tools/` | `ble_set_colors.py`: example Bluetooth client (Python, bleak); `project_version.cmake`: version number from the Git tag |
 | `test/host/` | Unity + CMock tests that run on the Linux host, no board needed |
 
 ## Build and flash
@@ -278,6 +283,44 @@ is. Extra settings are in `sdkconfig.defaults.esp32`. Don't use
 idf.py -B build_esp32 -D SDKCONFIG=sdkconfig.esp32 -D IDF_TARGET=esp32 build
 idf.py -B build_esp32 -D SDKCONFIG=sdkconfig.esp32 -p /dev/ttyACM0 flash
 ```
+
+## Versioning
+
+The firmware version follows [PEP 440](https://packaging.python.org/en/latest/specifications/version-specifiers/#version-specifiers)
+with calendar-based releases `YYYY.N`: the year, then a running number that
+starts at 1 each year (`2026.1`, `2026.2`, …, `2027.1`).
+
+The version comes from the Git tag; no file has to be edited. To make a
+release, tag the commit and build:
+
+```sh
+git tag v2026.1
+```
+
+Every build after a release is a PEP 440 *developmental release* of the next
+one, numbered by the commits since the tag. If the build year is newer than
+the last release, the next release is `<year>.1`. `tools/project_version.cmake`
+works this out from `git describe` at build time:
+
+| State | Version |
+|-------|---------|
+| On tag `v2026.1` | `2026.1` |
+| 1 commit after the tag | `2026.2.dev1+gabc1234` |
+| 3 commits after the tag | `2026.2.dev3+gdef5678` |
+| Uncommitted changes | `2026.2.dev3+gdef5678.dirty` |
+| Last tag `v2026.4`, built in 2027 | `2027.1.dev3+gdef5678` |
+| No `vYYYY.N` tag yet (42 commits) | `<year>.1.dev42+gabc1234` |
+| No Git | `0+unknown` |
+
+They sort as expected: `2026.1 < 2026.2.dev1 < 2026.2.dev3 < 2026.2`. One
+commit per feature (or squash-merged feature branches) makes `devN` count
+features. The part after `+` (commit, uncommitted changes) is a PEP 440
+*local version*.
+
+The version appears in the boot log (`main: led_signal_basis Version 2026.1`),
+in the *Status* card of the settings page, and at `GET /api/version`.
+CMake only reads the tag when the project is configured: after setting a new
+tag, run `idf.py reconfigure` (or a clean build) so the version is updated.
 
 ## Run the tests
 

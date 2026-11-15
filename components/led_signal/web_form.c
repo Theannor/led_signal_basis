@@ -143,6 +143,21 @@ static bool append(char *buf, size_t len, size_t *pos, const char *fmt, ...)
     return true;
 }
 
+int web_version_json(const char *version, char *buf, size_t len)
+{
+    if (version == NULL || buf == NULL || len == 0) {
+        return -1;
+    }
+    // PEP-440-Versionen brauchen kein Escaping; alles Unerwartete ablehnen
+    for (const char *c = version; *c != '\0'; c++) {
+        if (*c == '"' || *c == '\\' || (unsigned char)*c < 0x20) {
+            return -1;
+        }
+    }
+    size_t pos = 0;
+    return append(buf, len, &pos, "{\"version\":\"%s\"}", version) ? (int)pos : -1;
+}
+
 // Gemeinsames Stylesheet (im Flash, wird vom Browser gecacht).
 // Hell/Dunkel automatisch über prefers-color-scheme.
 static const char STYLE_CSS[] =
@@ -233,7 +248,7 @@ int web_page_render(char *buf, size_t len, const web_page_info_t *info)
     }
 
     // Alle Texte vor dem Einsetzen maskieren (SSID darf z. B. < oder " enthalten)
-    char ip[64], hostname[200], ssid[200], ble_name[128], message[400];
+    char ip[64], hostname[200], ssid[200], ble_name[128], message[400], version[96];
     // MAC-Texte enthalten nur Hex-Ziffern, Doppelpunkte und Kommas
     char own_mac[ESPNOW_MAC_STR_LEN], gateway[ESPNOW_MAC_STR_LEN], peers[ESPNOW_PEER_LIST_STR_MAX];
     if (!web_html_escape(info->ip ? info->ip : "-", ip, sizeof(ip)) ||
@@ -243,7 +258,8 @@ int web_page_render(char *buf, size_t len, const web_page_info_t *info)
         !web_html_escape(info->ble_name, ble_name, sizeof(ble_name)) ||
         !web_html_escape(info->hostname, hostname, sizeof(hostname)) ||
         !web_html_escape(info->ssid, ssid, sizeof(ssid)) ||
-        !web_html_escape(info->message, message, sizeof(message))) {
+        !web_html_escape(info->message, message, sizeof(message)) ||
+        !web_html_escape(info->version, version, sizeof(version))) {
         return -1;
     }
 
@@ -263,6 +279,9 @@ int web_page_render(char *buf, size_t len, const web_page_info_t *info)
         ip, hostname);
     if (ok && info->own_mac != NULL) {
         ok = append(buf, len, &pos, "<dt>ESP-NOW-MAC</dt><dd>%s</dd>", own_mac);
+    }
+    if (ok && info->version != NULL) {
+        ok = append(buf, len, &pos, "<dt>Version</dt><dd>%s</dd>", version);
     }
     ok = ok && append(buf, len, &pos, "</dl></div>");
     ok = ok && append(buf, len, &pos,
