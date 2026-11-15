@@ -48,6 +48,11 @@ Firmware for a WS2812B LED signal lamp, built with ESP-IDF.
   (`tools/project_version.cmake`). In between, builds are automatically
   `<next>.devN+g<hash>`. Never write version numbers into code or files by hand;
   do not create tags without being asked. After a new tag: `idf.py reconfigure`.
+- Web UI is bilingual (German/English): every new visible text (pages, messages,
+  API `error` texts) goes into both tables, `page_text_t` TEXT_DE/TEXT_EN in
+  `web_form.c` and `web_msg_t` in `web_lang.c`, never as a hard-coded string.
+  Format strings (`*_fmt`) need the same placeholders in the same order in both
+  languages. Test new texts in both languages (`test/host/main/test_web_lang.c`).
 - An English description for humans is kept in README.md and kept up to date.
 
 ## Code Style
