@@ -21,10 +21,7 @@
 #define WEB_JSON_MAX   256   // reicht für LED_PALETTE_MAX Farben
 #define WEB_VERSION_UNKNOWN  "0+unknown"   // wenn ctx.version fehlt
 #define WEB_CSS_CACHE  "max-age=3600"  // Stylesheet eine Stunde im Browser-Cache
-
-// Zahl als Text in String-Literalen
-#define STR_(x) #x
-#define STR(x)  STR_(x)
+#define WEB_HDR_MAX    128   // gelesene Länge von Cookie und Accept-Language (Rest wird abgeschnitten)
 
 static const char *TAG = "web_server";
 
@@ -47,9 +44,30 @@ static void palette_set(const led_palette_t *palette)
     xSemaphoreGive(s_palette_lock);
 }
 
-// Seite mit optionalem Hinweis senden
-static esp_err_t send_page(httpd_req_t *req, const char *status, const char *message, bool is_error)
+// Header-Wert lesen; zu lange Werte abgeschnitten, fehlende als ""
+static void read_header(httpd_req_t *req, const char *field, char *buf, size_t len)
 {
+    buf[0] = '\0';
+    esp_err_t err = httpd_req_get_hdr_value_str(req, field, buf, len);
+    if (err != ESP_OK && err != ESP_ERR_HTTPD_RESULT_TRUNC) {
+        buf[0] = '\0';
+    }
+}
+
+// Sprache der Anfrage: Cookie des Sprachschalters, sonst Accept-Language des Browsers
+static web_lang_t request_lang(httpd_req_t *req)
+{
+    char cookie[WEB_HDR_MAX];
+    char accept[WEB_HDR_MAX];
+    read_header(req, "Cookie", cookie, sizeof(cookie));
+    read_header(req, "Accept-Language", accept, sizeof(accept));
+    return web_lang_select(cookie, accept[0] != '\0' ? accept : NULL);
+}
+
+// Seite mit optionalem Hinweis in der Sprache der Anfrage senden
+static esp_err_t send_page(httpd_req_t *req, const char *status, web_msg_t msg, bool is_error)
+{
+    web_lang_t lang = request_lang(req);
     char ip[16] = "-";
     if (s_ctx.get_ip != NULL) {
         s_ctx.get_ip(ip, sizeof(ip));
@@ -67,13 +85,14 @@ static esp_err_t send_page(httpd_req_t *req, const char *status, const char *mes
         espnow_peer_list_format(&s_ctx.espnow, peers, sizeof(peers));
     }
     web_page_info_t info = {
+        .lang = lang,
         .client_mode = s_ctx.client_mode,
         .ip = ip,
         .hostname = s_ctx.config.hostname,
         .version = s_ctx.version,
         .ssid = s_ctx.config.ssid,
         .ble_name = s_ctx.ble_name[0] != '\0' ? s_ctx.ble_name : NULL,
-        .message = message,
+        .message = web_msg(lang, msg),
         .message_is_error = is_error,
         .receiver_mode = s_ctx.receiver_mode,
         .own_mac = espnow ? own_mac : NULL,
@@ -106,22 +125,20 @@ static esp_err_t send_page(httpd_req_t *req, const char *status, const char *mes
 
 static esp_err_t handle_get_root(httpd_req_t *req)
 {
-    return send_page(req, "200 OK", NULL, false);
+    return send_page(req, "200 OK", WEB_MSG_NONE, false);
 }
-
-// Hinweis für Empfänger: Farben kommen nur per ESP-NOW
-#define RECEIVER_TEXT  "Dieses Gerät ist ESP-NOW-Empfänger und übernimmt die Farben vom Gateway."
 
 static esp_err_t handle_get_colors_page(httpd_req_t *req)
 {
     if (s_ctx.receiver_mode) {
-        return send_page(req, "403 Forbidden", RECEIVER_TEXT, true);
+        return send_page(req, "403 Forbidden", WEB_MSG_RECEIVER, true);
     }
+    web_lang_t lang = request_lang(req);
     char *page = malloc(WEB_PAGE_MAX);
     if (page == NULL) {
         return ESP_ERR_NO_MEM;
     }
-    int len = web_colors_page_render(page, WEB_PAGE_MAX);
+    int len = web_colors_page_render_lang(page, WEB_PAGE_MAX, lang);
     esp_err_t err;
     if (len < 0) {
         ESP_LOGE(TAG, "Farben-Seite passt nicht in den Puffer");
@@ -153,6 +170,17 @@ static esp_err_t send_json(httpd_req_t *req, const char *status, const char *jso
     return httpd_resp_send(req, json, (ssize_t)strlen(json));
 }
 
+// Fehler als {"error":"..."} in der Sprache der Anfrage senden
+static esp_err_t send_json_error(httpd_req_t *req, const char *status, web_msg_t msg)
+{
+    char json[WEB_JSON_MAX];
+    if (web_error_json(web_msg(request_lang(req), msg), json, sizeof(json)) < 0) {
+        ESP_LOGE(TAG, "Fehlermeldung passt nicht ins JSON");
+        return send_json(req, status, "{\"error\":\"\"}");
+    }
+    return send_json(req, status, json);
+}
+
 // Firmware-Version als {"version":"..."} senden
 static esp_err_t handle_get_api_version(httpd_req_t *req)
 {
@@ -160,7 +188,7 @@ static esp_err_t handle_get_api_version(httpd_req_t *req)
     const char *version = s_ctx.version != NULL ? s_ctx.version : WEB_VERSION_UNKNOWN;
     if (web_version_json(version, json, sizeof(json)) < 0) {
         ESP_LOGE(TAG, "Version passt nicht ins JSON");
-        return send_json(req, "500 Internal Server Error", "{\"error\":\"Version ungültig\"}");
+        return send_json_error(req, "500 Internal Server Error", WEB_MSG_VERSION_INVALID);
     }
     return send_json(req, "200 OK", json);
 }
@@ -173,7 +201,7 @@ static esp_err_t send_palette(httpd_req_t *req)
     palette_get(&palette);
     if (led_palette_to_json(&palette, json, sizeof(json)) < 0) {
         ESP_LOGE(TAG, "Palette passt nicht in den JSON-Puffer");
-        return send_json(req, "500 Internal Server Error", "{\"error\":\"Interner Fehler.\"}");
+        return send_json_error(req, "500 Internal Server Error", WEB_MSG_INTERNAL);
     }
     return send_json(req, "200 OK", json);
 }
@@ -202,13 +230,13 @@ static bool read_body(httpd_req_t *req, char *body, size_t body_len)
 }
 
 // Fehlertext zu einem ungültigen Feld
-static const char *error_text(net_config_result_t result)
+static web_msg_t error_text(net_config_result_t result)
 {
     switch (result) {
-    case NET_CONFIG_ERR_SSID:     return "SSID ist zu lang (max. 32 Zeichen).";
-    case NET_CONFIG_ERR_PASSWORD: return "Passwort muss 8 bis 63 Zeichen haben.";
-    case NET_CONFIG_ERR_HOSTNAME: return "Hostname: 1 bis 32 Zeichen, nur a-z, 0-9 und '-', nicht am Anfang/Ende.";
-    default:                      return "Ungültige Eingabe.";
+    case NET_CONFIG_ERR_SSID:     return WEB_MSG_SSID;
+    case NET_CONFIG_ERR_PASSWORD: return WEB_MSG_PASSWORD;
+    case NET_CONFIG_ERR_HOSTNAME: return WEB_MSG_HOSTNAME;
+    default:                      return WEB_MSG_INVALID;
     }
 }
 
@@ -216,7 +244,7 @@ static esp_err_t handle_post_config(httpd_req_t *req)
 {
     char body[WEB_BODY_MAX];
     if (!read_body(req, body, sizeof(body))) {
-        return send_page(req, "400 Bad Request", "Anfrage zu groß oder unvollständig.", true);
+        return send_page(req, "400 Bad Request", WEB_MSG_BAD_REQUEST, true);
     }
 
     // Neue Werte auf Basis der gespeicherten Konfiguration
@@ -250,10 +278,10 @@ static esp_err_t handle_post_config(httpd_req_t *req)
 
     esp_err_t err = config_store_save(&cfg);
     if (err != ESP_OK) {
-        return send_page(req, "500 Internal Server Error", "Speichern fehlgeschlagen.", true);
+        return send_page(req, "500 Internal Server Error", WEB_MSG_SAVE_FAILED, true);
     }
     s_ctx.config = cfg;
-    err = send_page(req, "200 OK", "Gespeichert. Das Gerät startet neu …", false);
+    err = send_page(req, "200 OK", WEB_MSG_SAVED_RESTART, false);
     if (s_ctx.schedule_restart != NULL) {
         s_ctx.schedule_restart();
     }
@@ -262,11 +290,10 @@ static esp_err_t handle_post_config(httpd_req_t *req)
 
 static esp_err_t handle_post_ble(httpd_req_t *req)
 {
-    static const char *const invalid = "Bluetooth-Name: 1 bis " STR(NET_CONFIG_BLE_NAME_MAX)
-                                       " Zeichen, ohne Umlaute.";
+    const web_msg_t invalid = WEB_MSG_BLE_NAME;
     char body[WEB_BODY_MAX];
     if (!read_body(req, body, sizeof(body))) {
-        return send_page(req, "400 Bad Request", "Anfrage zu groß oder unvollständig.", true);
+        return send_page(req, "400 Bad Request", WEB_MSG_BAD_REQUEST, true);
     }
     char name[NET_CONFIG_BLE_NAME_MAX + 1];
     if (!web_form_get_field(body, "ble_name", name, sizeof(name))) {
@@ -277,10 +304,10 @@ static esp_err_t handle_post_ble(httpd_req_t *req)
         return send_page(req, "400 Bad Request", invalid, true);
     }
     if (ble_name_store_save(name) != ESP_OK) {
-        return send_page(req, "500 Internal Server Error", "Speichern fehlgeschlagen.", true);
+        return send_page(req, "500 Internal Server Error", WEB_MSG_SAVE_FAILED, true);
     }
     strlcpy(s_ctx.ble_name, name, sizeof(s_ctx.ble_name));
-    esp_err_t err = send_page(req, "200 OK", "Gespeichert. Das Gerät startet neu …", false);
+    esp_err_t err = send_page(req, "200 OK", WEB_MSG_SAVED_RESTART, false);
     if (s_ctx.schedule_restart != NULL) {
         s_ctx.schedule_restart();
     }
@@ -288,16 +315,12 @@ static esp_err_t handle_post_ble(httpd_req_t *req)
 }
 
 // Fehlertext zu ungültigen ESP-NOW-Einstellungen
-static const char *espnow_error_text(espnow_config_result_t result)
+static web_msg_t espnow_error_text(espnow_config_result_t result)
 {
     switch (result) {
-    case ESPNOW_CONFIG_ERR_PEERS:
-        return "Empfänger: bis zu " STR(ESPNOW_PEERS_MAX) " MAC-Adressen wie aa:bb:cc:dd:ee:ff, "
-               "mit Komma getrennt, nicht die eigene.";
-    case ESPNOW_CONFIG_ERR_GATEWAY:
-        return "Gateway: eine MAC-Adresse wie aa:bb:cc:dd:ee:ff (nicht die eigene) angeben.";
-    default:
-        return "Bitte Gateway oder Empfänger wählen.";
+    case ESPNOW_CONFIG_ERR_PEERS:   return WEB_MSG_ESPNOW_PEERS;
+    case ESPNOW_CONFIG_ERR_GATEWAY: return WEB_MSG_ESPNOW_GATEWAY;
+    default:                        return WEB_MSG_ESPNOW_ROLE;
     }
 }
 
@@ -305,7 +328,7 @@ static esp_err_t handle_post_espnow(httpd_req_t *req)
 {
     char body[WEB_BODY_MAX];
     if (!read_body(req, body, sizeof(body))) {
-        return send_page(req, "400 Bad Request", "Anfrage zu groß oder unvollständig.", true);
+        return send_page(req, "400 Bad Request", WEB_MSG_BAD_REQUEST, true);
     }
     espnow_config_t cfg = s_ctx.espnow;
     char role[12];
@@ -350,10 +373,10 @@ static esp_err_t handle_post_espnow(httpd_req_t *req)
         return send_page(req, "400 Bad Request", espnow_error_text(result), true);
     }
     if (espnow_store_save(&cfg) != ESP_OK) {
-        return send_page(req, "500 Internal Server Error", "Speichern fehlgeschlagen.", true);
+        return send_page(req, "500 Internal Server Error", WEB_MSG_SAVE_FAILED, true);
     }
     s_ctx.espnow = cfg;
-    esp_err_t err = send_page(req, "200 OK", "Gespeichert. Das Gerät startet neu …", false);
+    esp_err_t err = send_page(req, "200 OK", WEB_MSG_SAVED_RESTART, false);
     if (s_ctx.schedule_restart != NULL) {
         s_ctx.schedule_restart();
     }
@@ -362,12 +385,10 @@ static esp_err_t handle_post_espnow(httpd_req_t *req)
 
 static esp_err_t handle_post_led(httpd_req_t *req)
 {
-    static const char *const invalid = "LED-Strip: GPIO aus der Liste wählen, "
-                                       STR(LED_CONFIG_COUNT_MIN) " bis " STR(LED_CONFIG_COUNT_MAX)
-                                       " LEDs.";
+    const web_msg_t invalid = WEB_MSG_LED;
     char body[WEB_BODY_MAX];
     if (!read_body(req, body, sizeof(body))) {
-        return send_page(req, "400 Bad Request", "Anfrage zu groß oder unvollständig.", true);
+        return send_page(req, "400 Bad Request", WEB_MSG_BAD_REQUEST, true);
     }
     char gpio_text[8];
     char count_text[8];
@@ -387,10 +408,10 @@ static esp_err_t handle_post_led(httpd_req_t *req)
         return send_page(req, "400 Bad Request", invalid, true);
     }
     if (led_store_save(&cfg, s_ctx.led_gpio_mask) != ESP_OK) {
-        return send_page(req, "500 Internal Server Error", "Speichern fehlgeschlagen.", true);
+        return send_page(req, "500 Internal Server Error", WEB_MSG_SAVE_FAILED, true);
     }
     s_ctx.led = cfg;
-    esp_err_t err = send_page(req, "200 OK", "Gespeichert. Das Gerät startet neu …", false);
+    esp_err_t err = send_page(req, "200 OK", WEB_MSG_SAVED_RESTART, false);
     if (s_ctx.schedule_restart != NULL) {
         s_ctx.schedule_restart();
     }
@@ -400,22 +421,18 @@ static esp_err_t handle_post_led(httpd_req_t *req)
 static esp_err_t handle_put_api_colors(httpd_req_t *req)
 {
     if (s_ctx.receiver_mode) {
-        return send_json(req, "403 Forbidden", "{\"error\":\"" RECEIVER_TEXT "\"}");
+        return send_json_error(req, "403 Forbidden", WEB_MSG_RECEIVER);
     }
     char body[WEB_BODY_MAX];
     if (!read_body(req, body, sizeof(body))) {
-        return send_json(req, "400 Bad Request",
-                         "{\"error\":\"Anfrage zu groß oder unvollständig.\"}");
+        return send_json_error(req, "400 Bad Request", WEB_MSG_BAD_REQUEST);
     }
     led_palette_t palette;
     if (!led_palette_from_json(body, &palette)) {
-        return send_json(req, "400 Bad Request",
-                         "{\"error\":\"Erwartet {\\\"colors\\\":[\\\"#rrggbb\\\", ...]} "
-                         "mit höchstens " STR(LED_PALETTE_MAX) " Farben.\"}");
+        return send_json_error(req, "400 Bad Request", WEB_MSG_PALETTE_FORMAT);
     }
     if (palette_store_save(&palette) != ESP_OK) {
-        return send_json(req, "500 Internal Server Error",
-                         "{\"error\":\"Speichern fehlgeschlagen.\"}");
+        return send_json_error(req, "500 Internal Server Error", WEB_MSG_SAVE_FAILED);
     }
     palette_set(&palette);
     if (s_ctx.on_palette_changed != NULL) {

@@ -92,6 +92,8 @@ static void start_server(const char *ble_name)
     s_get_root = s_post_ble = s_api_get = NULL;
     httpd_start_Stub(start_stub);
     httpd_register_uri_handler_Stub(register_stub);
+    // Keine Cookie- und Accept-Language-Header -> deutsche Seiten
+    httpd_req_get_hdr_value_str_IgnoreAndReturn(ESP_ERR_NOT_FOUND);
     TEST_ASSERT_EQUAL(ESP_OK, web_server_start(&ctx));
     TEST_ASSERT_NOT_NULL(s_get_root);
     TEST_ASSERT_NOT_NULL(s_post_ble);

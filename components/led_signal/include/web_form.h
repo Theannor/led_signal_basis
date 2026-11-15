@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include "web_lang.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -23,6 +24,7 @@ bool web_html_escape(const char *in, char *out, size_t out_len);
 
 // Daten für die Konfigurationsseite (Texte dürfen NULL sein)
 typedef struct {
+    web_lang_t lang;         // Sprache der Seite (0 = Deutsch)
     bool client_mode;        // true = als Client im WLAN, false = eigener AP
     const char *ip;          // aktuelle IP-Adresse
     const char *hostname;    // aktueller Hostname
@@ -48,14 +50,21 @@ typedef struct {
 // Das Client-Passwort wird nie in die Seite geschrieben.
 int web_page_render(char *buf, size_t len, const web_page_info_t *info);
 
-// Baut die Farben-Seite (mit Menü) nach buf. Die Seite lädt und speichert die
-// Palette per JavaScript über GET/PUT /api/colors.
+// Baut die Farben-Seite (mit Menü) in der Sprache lang nach buf. Die Seite lädt
+// und speichert die Palette per JavaScript über GET/PUT /api/colors.
 // Gibt die Länge zurück, -1 wenn buf zu klein ist.
+int web_colors_page_render_lang(char *buf, size_t len, web_lang_t lang);
+
+// Wie web_colors_page_render_lang(), auf Deutsch
 int web_colors_page_render(char *buf, size_t len);
 
 // Baut {"version":"<version>"} nach buf. Gibt die Länge zurück, -1 wenn buf
 // zu klein ist oder version NULL ist bzw. Anführungszeichen, Backslash oder Steuerzeichen enthält.
 int web_version_json(const char *version, char *buf, size_t len);
+
+// Baut {"error":"<message>"} nach buf und maskiert dabei Anführungszeichen und Backslash.
+// Gibt die Länge zurück, -1 wenn buf zu klein ist, message NULL ist oder Steuerzeichen enthält.
+int web_error_json(const char *message, char *buf, size_t len);
 
 // Gemeinsames Stylesheet aller Seiten (konstanter Text im Flash)
 const char *web_style_css(void);

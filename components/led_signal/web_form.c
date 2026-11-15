@@ -11,6 +11,7 @@
 #include "net_config.h"
 
 #define WEB_TITLE "LED-Signal"  // Tab-Titel und Name in der Kopfleiste
+#define WEB_LANG_COOKIE_AGE "31536000"  // Sprachwahl ein Jahr im Browser merken
 
 // Wert einer Hex-Ziffer, -1 bei ungültigem Zeichen
 static int hex_value(char c)
@@ -160,6 +161,27 @@ int web_version_json(const char *version, char *buf, size_t len)
     return append(buf, len, &pos, "{\"version\":\"%s\"}", version) ? (int)pos : -1;
 }
 
+int web_error_json(const char *message, char *buf, size_t len)
+{
+    if (message == NULL || buf == NULL || len == 0) {
+        return -1;
+    }
+    size_t pos = 0;
+    if (!append(buf, len, &pos, "{\"error\":\"")) {
+        return -1;
+    }
+    for (const char *c = message; *c != '\0'; c++) {
+        if ((unsigned char)*c < 0x20) {
+            return -1;
+        }
+        bool escape = *c == '"' || *c == '\\';
+        if (!append(buf, len, &pos, escape ? "\\%c" : "%c", *c)) {
+            return -1;
+        }
+    }
+    return append(buf, len, &pos, "\"}") ? (int)pos : -1;
+}
+
 // Gemeinsames Stylesheet (im Flash, wird vom Browser gecacht).
 // Hell/Dunkel automatisch über prefers-color-scheme.
 static const char STYLE_CSS[] =
@@ -180,6 +202,7 @@ static const char STYLE_CSS[] =
     "nav a{padding:.35em .9em;border-radius:99px;color:var(--mut);text-decoration:none;"
     "font-weight:600;font-size:.9em}"
     "nav a.cur{background:var(--acc);color:#fff}"
+    "nav.lang a{padding:.35em .6em}"
     "main{padding-top:0}"
     "h1{font-size:1.5em;margin:.2em 0 .6em}"
     "h2{font-size:.8em;margin:0 0 .6em;color:var(--mut);text-transform:uppercase;letter-spacing:.06em}"
@@ -226,21 +249,186 @@ typedef enum {
     PAGE_COLORS,
 } page_t;
 
-// Gemeinsamer Kopf aller Seiten: Stylesheet, Kopfleiste mit Menü (aktuelle
-// Seite markiert, Farben nur mit show_colors), Beginn des Inhalts
-static bool append_head(char *buf, size_t len, size_t *pos, page_t page, bool show_colors)
+// Texte der Seiten je Sprache. *_fmt sind printf-Formate; beide Sprachen
+// müssen dieselben Platzhalter in derselben Reihenfolge haben.
+typedef struct {
+    const char *settings;
+    const char *colors;
+    const char *status;
+    const char *mode;
+    const char *mode_client;
+    const char *mode_ap_receiver;
+    const char *mode_ap;
+    const char *espnow_mac;
+    const char *version;
+    const char *wifi;
+    const char *wifi_ssid;
+    const char *wifi_password;
+    const char *password_keep;
+    const char *open_wifi;
+    const char *save_restart;
+    const char *ssid_hint;
+    const char *ble_name;
+    const char *ble_hint_fmt;          // %d (max. Länge)
+    const char *espnow_role_gateway;
+    const char *espnow_peers;
+    const char *espnow_role_receiver;
+    const char *espnow_gateway;
+    const char *espnow_hint_fmt;       // %s (eigene MAC), %d (max. Empfänger), %u (Sekunden)
+    const char *led_strip;
+    const char *led_gpio;
+    const char *led_count;
+    const char *led_hint_fmt;          // %d, %d (min., max. Anzahl)
+    const char *colors_intro;
+    const char *color_add;
+    const char *save;
+    const char *colors_hint_fmt;       // %d (max. Farben)
+    // Texte im JavaScript der Farben-Seite (ohne ' und \)
+    const char *js_remove;
+    const char *js_load_failed;
+    const char *js_max_before;         // 'Höchstens '+MAX+' Farben.'
+    const char *js_max_after;
+    const char *js_saved;
+    const char *js_error;
+    const char *js_save_failed;
+} page_text_t;
+
+static const page_text_t TEXT_DE = {
+    .settings = "Einstellungen",
+    .colors = "Farben",
+    .status = "Status",
+    .mode = "Modus",
+    .mode_client = "WLAN-Client",
+    .mode_ap_receiver = "Access Point, danach ESP-NOW-Empfänger",
+    .mode_ap = "Access Point",
+    .espnow_mac = "ESP-NOW-MAC",
+    .version = "Version",
+    .wifi = "WLAN",
+    .wifi_ssid = "WLAN (SSID)",
+    .wifi_password = "WLAN-Passwort",
+    .password_keep = "leer lassen = unverändert",
+    .open_wifi = "offenes WLAN (kein Passwort)",
+    .save_restart = "Speichern und neu starten",
+    .ssid_hint = "SSID leer lassen = nur Access Point.",
+    .ble_name = "Gerätename",
+    .ble_hint_fmt = "Unter diesem Namen lassen sich die Farben per Bluetooth setzen. "
+                    "1 bis %d Zeichen, keine Umlaute.",
+    .espnow_role_gateway = "Gateway: Farben per WLAN/Bluetooth annehmen und weiterleiten",
+    .espnow_peers = "Empfänger (MAC-Adressen, mit Komma getrennt)",
+    .espnow_role_receiver = "Empfänger: Farben nur per ESP-NOW vom Gateway",
+    .espnow_gateway = "Gateway (MAC-Adresse)",
+    .espnow_hint_fmt = "Eigene MAC: %s. Höchstens %d Empfänger. Ein Empfänger öffnet nach dem "
+                       "Start %u s lang seinen Access Point mit dieser Seite; solange ein Gerät "
+                       "verbunden ist, bleibt er offen. Danach sucht er den Kanal des Gateways.",
+    .led_strip = "LED-Strip",
+    .led_gpio = "Datenleitung (GPIO)",
+    .led_count = "Anzahl LEDs",
+    .led_hint_fmt = "%d bis %d LEDs. Mehr LEDs brauchen mehr Strom; die Helligkeit ist "
+                    "wegen der USB-Versorgung begrenzt.",
+    .colors_intro = "Jede LED wählt zufällig eine dieser Farben, blendet sie ein und wieder aus.",
+    .color_add = "Farbe hinzufügen",
+    .save = "Speichern",
+    .colors_hint_fmt = "Höchstens %d Farben. Keine Farbe = zufällige Farben. "
+                       "Die Helligkeit wird begrenzt, dunkle Farben sind daher kaum sichtbar.",
+    .js_remove = "Entfernen",
+    .js_load_failed = "Laden fehlgeschlagen.",
+    .js_max_before = "Höchstens ",
+    .js_max_after = " Farben.",
+    .js_saved = "Gespeichert.",
+    .js_error = "Fehler.",
+    .js_save_failed = "Speichern fehlgeschlagen.",
+};
+
+static const page_text_t TEXT_EN = {
+    .settings = "Settings",
+    .colors = "Colors",
+    .status = "Status",
+    .mode = "Mode",
+    .mode_client = "Wi-Fi client",
+    .mode_ap_receiver = "Access point, then ESP-NOW receiver",
+    .mode_ap = "Access point",
+    .espnow_mac = "ESP-NOW MAC",
+    .version = "Version",
+    .wifi = "Wi-Fi",
+    .wifi_ssid = "Wi-Fi (SSID)",
+    .wifi_password = "Wi-Fi password",
+    .password_keep = "leave empty = unchanged",
+    .open_wifi = "open Wi-Fi (no password)",
+    .save_restart = "Save and restart",
+    .ssid_hint = "Leave SSID empty = access point only.",
+    .ble_name = "Device name",
+    .ble_hint_fmt = "Colors can be set via Bluetooth under this name. "
+                    "1 to %d characters, ASCII only.",
+    .espnow_role_gateway = "Gateway: accept colors via Wi-Fi/Bluetooth and forward them",
+    .espnow_peers = "Receivers (MAC addresses, separated by commas)",
+    .espnow_role_receiver = "Receiver: colors only via ESP-NOW from the gateway",
+    .espnow_gateway = "Gateway (MAC address)",
+    .espnow_hint_fmt = "Own MAC: %s. At most %d receivers. After starting, a receiver opens its "
+                       "access point with this page for %u s; it stays open while a device is "
+                       "connected. Then it searches for the gateway's channel.",
+    .led_strip = "LED strip",
+    .led_gpio = "Data line (GPIO)",
+    .led_count = "Number of LEDs",
+    .led_hint_fmt = "%d to %d LEDs. More LEDs need more current; brightness is limited "
+                    "because of the USB power supply.",
+    .colors_intro = "Each LED randomly picks one of these colors, fades it in and out again.",
+    .color_add = "Add color",
+    .save = "Save",
+    .colors_hint_fmt = "At most %d colors. No color = random colors. "
+                       "Brightness is limited, so dark colors are barely visible.",
+    .js_remove = "Remove",
+    .js_load_failed = "Loading failed.",
+    .js_max_before = "At most ",
+    .js_max_after = " colors.",
+    .js_saved = "Saved.",
+    .js_error = "Error.",
+    .js_save_failed = "Saving failed.",
+};
+
+static const page_text_t *page_text(web_lang_t lang)
 {
+    return lang == WEB_LANG_EN ? &TEXT_EN : &TEXT_DE;
+}
+
+// Link des Sprachschalters: aktuelle Sprache markiert, die andere setzt das
+// Cookie und lädt die Seite (per GET) neu
+static bool append_lang_link(char *buf, size_t len, size_t *pos, web_lang_t link,
+                             web_lang_t current, const char *href)
+{
+    const char *label = link == WEB_LANG_EN ? "EN" : "DE";
+    const char *title = link == WEB_LANG_EN ? "English" : "Deutsch";
+    if (link == current) {
+        return append(buf, len, pos, "<a class=\"cur\" title=\"%s\">%s</a>", title, label);
+    }
     return append(buf, len, pos,
-        "<!DOCTYPE html><html lang=\"de\"><head><meta charset=\"utf-8\">"
-        "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
-        "<title>" WEB_TITLE "</title><link rel=\"stylesheet\" href=\"/style.css\">"
-        "</head><body><header><span class=\"brand\">" WEB_TITLE "</span>"
-        "<nav>%s%s%s<a href=\"/\"%s>Einstellungen</a></nav>"
-        "</header><main>",
-        show_colors ? "<a href=\"/colors\"" : "",
-        show_colors ? (page == PAGE_COLORS ? " class=\"cur\">" : ">") : "",
-        show_colors ? "Farben</a>" : "",
-        page == PAGE_SETTINGS ? " class=\"cur\"" : "");
+        "<a href=\"%s\" title=\"%s\" onclick=\"document.cookie='" WEB_LANG_COOKIE "=%s;path=/;"
+        "max-age=" WEB_LANG_COOKIE_AGE ";samesite=lax'\">%s</a>",
+        href, title, web_lang_code(link), label);
+}
+
+// Gemeinsamer Kopf aller Seiten: Stylesheet, Kopfleiste mit Menü (aktuelle
+// Seite markiert, Farben nur mit show_colors) und Sprachschalter, Beginn des Inhalts
+static bool append_head(char *buf, size_t len, size_t *pos, page_t page, bool show_colors,
+                        web_lang_t lang)
+{
+    const page_text_t *t = page_text(lang);
+    const char *href = page == PAGE_COLORS ? "/colors" : "/";
+    return append(buf, len, pos,
+               "<!DOCTYPE html><html lang=\"%s\"><head><meta charset=\"utf-8\">"
+               "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+               "<title>" WEB_TITLE "</title><link rel=\"stylesheet\" href=\"/style.css\">"
+               "</head><body><header><span class=\"brand\">" WEB_TITLE "</span>"
+               "<nav>%s%s%s%s<a href=\"/\"%s>%s</a></nav><nav class=\"lang\">",
+               web_lang_code(lang),
+               show_colors ? "<a href=\"/colors\"" : "",
+               show_colors ? (page == PAGE_COLORS ? " class=\"cur\">" : ">") : "",
+               show_colors ? t->colors : "",
+               show_colors ? "</a>" : "",
+               page == PAGE_SETTINGS ? " class=\"cur\"" : "",
+               t->settings) &&
+           append_lang_link(buf, len, pos, WEB_LANG_DE, lang, href) &&
+           append_lang_link(buf, len, pos, WEB_LANG_EN, lang, href) &&
+           append(buf, len, pos, "</nav></header><main>");
 }
 
 int web_page_render(char *buf, size_t len, const web_page_info_t *info)
@@ -248,6 +436,7 @@ int web_page_render(char *buf, size_t len, const web_page_info_t *info)
     if (buf == NULL || len == 0 || info == NULL) {
         return -1;
     }
+    const page_text_t *t = page_text(info->lang);
 
     // Alle Texte vor dem Einsetzen maskieren (SSID darf z. B. < oder " enthalten)
     char ip[64], hostname[200], ssid[200], ble_name[128], message[400], version[96];
@@ -266,70 +455,70 @@ int web_page_render(char *buf, size_t len, const web_page_info_t *info)
     }
 
     size_t pos = 0;
-    bool ok = append_head(buf, len, &pos, PAGE_SETTINGS, !info->receiver_mode) &&
-              append(buf, len, &pos, "<h1>Einstellungen</h1>");
+    bool ok = append_head(buf, len, &pos, PAGE_SETTINGS, !info->receiver_mode, info->lang) &&
+              append(buf, len, &pos, "<h1>%s</h1>", t->settings);
     if (ok && message[0] != '\0') {
         ok = append(buf, len, &pos, "<p class=\"msg%s\">%s</p>",
                     info->message_is_error ? " err" : "", message);
     }
     ok = ok && append(buf, len, &pos,
-        "<div class=\"card\"><h2>Status</h2><dl>"
-        "<dt>Modus</dt><dd>%s</dd><dt>IP</dt><dd>%s</dd><dt>Hostname</dt><dd>%s</dd>",
-        info->client_mode ? "WLAN-Client"
-                          : (info->receiver_mode ? "Access Point, danach ESP-NOW-Empfänger"
-                                                 : "Access Point"),
+        "<div class=\"card\"><h2>%s</h2><dl>"
+        "<dt>%s</dt><dd>%s</dd><dt>IP</dt><dd>%s</dd><dt>Hostname</dt><dd>%s</dd>",
+        t->status, t->mode,
+        info->client_mode ? t->mode_client
+                          : (info->receiver_mode ? t->mode_ap_receiver : t->mode_ap),
         ip, hostname);
     if (ok && info->own_mac != NULL) {
-        ok = append(buf, len, &pos, "<dt>ESP-NOW-MAC</dt><dd>%s</dd>", own_mac);
+        ok = append(buf, len, &pos, "<dt>%s</dt><dd>%s</dd>", t->espnow_mac, own_mac);
     }
     if (ok && info->version != NULL) {
-        ok = append(buf, len, &pos, "<dt>Version</dt><dd>%s</dd>", version);
+        ok = append(buf, len, &pos, "<dt>%s</dt><dd>%s</dd>", t->version, version);
     }
     ok = ok && append(buf, len, &pos, "</dl></div>");
     ok = ok && append(buf, len, &pos,
-        "<form class=\"card\" method=\"post\" action=\"/config\"><h2>WLAN</h2>"
-        "<label>WLAN (SSID)<input type=\"text\" name=\"ssid\" maxlength=\"32\" value=\"%s\"></label>"
-        "<label>WLAN-Passwort<input type=\"password\" name=\"password\" maxlength=\"63\" "
-        "placeholder=\"leer lassen = unverändert\"></label>"
-        "<label class=\"chk\"><input type=\"checkbox\" name=\"open\" value=\"1\"> offenes WLAN (kein Passwort)</label>"
+        "<form class=\"card\" method=\"post\" action=\"/config\"><h2>%s</h2>"
+        "<label>%s<input type=\"text\" name=\"ssid\" maxlength=\"32\" value=\"%s\"></label>"
+        "<label>%s<input type=\"password\" name=\"password\" maxlength=\"63\" "
+        "placeholder=\"%s\"></label>"
+        "<label class=\"chk\"><input type=\"checkbox\" name=\"open\" value=\"1\"> %s</label>"
         "<label>Hostname<input type=\"text\" name=\"hostname\" maxlength=\"32\" value=\"%s\"></label>"
-        "<button type=\"submit\">Speichern und neu starten</button>"
-        "<small>SSID leer lassen = nur Access Point.</small></form>",
-        ssid, hostname);
+        "<button type=\"submit\">%s</button>"
+        "<small>%s</small></form>",
+        t->wifi, t->wifi_ssid, ssid, t->wifi_password, t->password_keep, t->open_wifi,
+        hostname, t->save_restart, t->ssid_hint);
     if (ok && info->ble_name != NULL) {
         ok = append(buf, len, &pos,
-            "<form class=\"card\" method=\"post\" action=\"/ble\"><h2>Bluetooth</h2>"
-            "<label>Gerätename<input type=\"text\" name=\"ble_name\" maxlength=\"%d\" value=\"%s\"></label>"
-            "<button type=\"submit\">Speichern und neu starten</button>"
-            "<small>Unter diesem Namen lassen sich die Farben per Bluetooth setzen. "
-            "1 bis %d Zeichen, keine Umlaute.</small></form>",
-            NET_CONFIG_BLE_NAME_MAX, ble_name, NET_CONFIG_BLE_NAME_MAX);
+                 "<form class=\"card\" method=\"post\" action=\"/ble\"><h2>Bluetooth</h2>"
+                 "<label>%s<input type=\"text\" name=\"ble_name\" maxlength=\"%d\" value=\"%s\"></label>"
+                 "<button type=\"submit\">%s</button><small>",
+                 t->ble_name, NET_CONFIG_BLE_NAME_MAX, ble_name, t->save_restart) &&
+             append(buf, len, &pos, t->ble_hint_fmt, NET_CONFIG_BLE_NAME_MAX) &&
+             append(buf, len, &pos, "</small></form>");
     }
     if (ok && info->own_mac != NULL) {
         ok = append(buf, len, &pos,
-            "<form class=\"card\" method=\"post\" action=\"/espnow\"><h2>ESP-NOW</h2>"
-            "<label class=\"chk\"><input type=\"radio\" name=\"espnow_role\" value=\"gateway\"%s>"
-            " Gateway: Farben per WLAN/Bluetooth annehmen und weiterleiten</label>"
-            "<label>Empfänger (MAC-Adressen, mit Komma getrennt)<input type=\"text\" name=\"peers\" "
-            "maxlength=\"%d\" value=\"%s\" placeholder=\"aa:bb:cc:dd:ee:ff, ...\"></label>"
-            "<label class=\"chk\"><input type=\"radio\" name=\"espnow_role\" value=\"receiver\"%s>"
-            " Empfänger: Farben nur per ESP-NOW vom Gateway</label>"
-            "<label>Gateway (MAC-Adresse)<input type=\"text\" name=\"gateway\" maxlength=\"%d\" "
-            "value=\"%s\" placeholder=\"aa:bb:cc:dd:ee:ff\"></label>"
-            "<button type=\"submit\">Speichern und neu starten</button>"
-            "<small>Eigene MAC: %s. Höchstens %d Empfänger. Ein Empfänger öffnet nach dem "
-            "Start %u s lang seinen Access Point mit dieser Seite; solange ein Gerät "
-            "verbunden ist, bleibt er offen. Danach sucht er den Kanal des Gateways.</small></form>",
-            info->espnow_receiver ? "" : " checked",
-            ESPNOW_PEER_LIST_STR_MAX, peers,
-            info->espnow_receiver ? " checked" : "",
-            ESPNOW_MAC_STR_LEN - 1, gateway,
-            own_mac, ESPNOW_PEERS_MAX, info->espnow_window_s);
+                 "<form class=\"card\" method=\"post\" action=\"/espnow\"><h2>ESP-NOW</h2>"
+                 "<label class=\"chk\"><input type=\"radio\" name=\"espnow_role\" value=\"gateway\"%s>"
+                 " %s</label>"
+                 "<label>%s<input type=\"text\" name=\"peers\" "
+                 "maxlength=\"%d\" value=\"%s\" placeholder=\"aa:bb:cc:dd:ee:ff, ...\"></label>"
+                 "<label class=\"chk\"><input type=\"radio\" name=\"espnow_role\" value=\"receiver\"%s>"
+                 " %s</label>"
+                 "<label>%s<input type=\"text\" name=\"gateway\" maxlength=\"%d\" "
+                 "value=\"%s\" placeholder=\"aa:bb:cc:dd:ee:ff\"></label>"
+                 "<button type=\"submit\">%s</button><small>",
+                 info->espnow_receiver ? "" : " checked", t->espnow_role_gateway,
+                 t->espnow_peers, ESPNOW_PEER_LIST_STR_MAX, peers,
+                 info->espnow_receiver ? " checked" : "", t->espnow_role_receiver,
+                 t->espnow_gateway, ESPNOW_MAC_STR_LEN - 1, gateway, t->save_restart) &&
+             append(buf, len, &pos, t->espnow_hint_fmt, own_mac, ESPNOW_PEERS_MAX,
+                    info->espnow_window_s) &&
+             append(buf, len, &pos, "</small></form>");
     }
     if (ok && info->led_gpio_mask != 0) {
         ok = append(buf, len, &pos,
-            "<form class=\"card\" method=\"post\" action=\"/led\"><h2>LED-Strip</h2>"
-            "<label>Datenleitung (GPIO)<select name=\"led_gpio\">");
+            "<form class=\"card\" method=\"post\" action=\"/led\"><h2>%s</h2>"
+            "<label>%s<select name=\"led_gpio\">", t->led_strip, t->led_gpio);
         for (unsigned gpio = 0; ok && gpio < 64; gpio++) {
             if (led_config_gpio_allowed((int)gpio, info->led_gpio_mask)) {
                 ok = append(buf, len, &pos, "<option value=\"%u\"%s>GPIO %u</option>",
@@ -337,57 +526,65 @@ int web_page_render(char *buf, size_t len, const web_page_info_t *info)
             }
         }
         ok = ok && append(buf, len, &pos,
-            "</select></label>"
-            "<label>Anzahl LEDs<input type=\"number\" name=\"led_count\" min=\"%d\" max=\"%d\" "
-            "value=\"%u\"></label>"
-            "<button type=\"submit\">Speichern und neu starten</button>"
-            "<small>%d bis %d LEDs. Mehr LEDs brauchen mehr Strom; die Helligkeit ist "
-            "wegen der USB-Versorgung begrenzt.</small></form>",
-            LED_CONFIG_COUNT_MIN, LED_CONFIG_COUNT_MAX, info->led_count,
-            LED_CONFIG_COUNT_MIN, LED_CONFIG_COUNT_MAX);
+                     "</select></label>"
+                     "<label>%s<input type=\"number\" name=\"led_count\" min=\"%d\" max=\"%d\" "
+                     "value=\"%u\"></label>"
+                     "<button type=\"submit\">%s</button><small>",
+                     t->led_count, LED_CONFIG_COUNT_MIN, LED_CONFIG_COUNT_MAX, info->led_count,
+                     t->save_restart) &&
+             append(buf, len, &pos, t->led_hint_fmt, LED_CONFIG_COUNT_MIN, LED_CONFIG_COUNT_MAX) &&
+             append(buf, len, &pos, "</small></form>");
     }
     ok = ok && append(buf, len, &pos, "</main></body></html>");
     return ok ? (int)pos : -1;
 }
 
-int web_colors_page_render(char *buf, size_t len)
+int web_colors_page_render_lang(char *buf, size_t len, web_lang_t lang)
 {
     if (buf == NULL || len == 0) {
         return -1;
     }
+    const page_text_t *t = page_text(lang);
     size_t pos = 0;
-    bool ok = append_head(buf, len, &pos, PAGE_COLORS, true);
+    bool ok = append_head(buf, len, &pos, PAGE_COLORS, true, lang);
     // Die Seite lädt und speichert die Palette über GET/PUT /api/colors
     ok = ok && append(buf, len, &pos,
-        "<h1>Farben</h1><p id=\"msg\" class=\"msg\"></p>"
-        "<div class=\"card\"><p>Jede LED wählt zufällig eine dieser Farben, "
-        "blendet sie ein und wieder aus.</p>"
+        "<h1>%s</h1><p id=\"msg\" class=\"msg\"></p>"
+        "<div class=\"card\"><p>%s</p>"
         "<div id=\"list\" class=\"sw\"><button type=\"button\" id=\"add\" class=\"add\" "
-        "title=\"Farbe hinzufügen\">+</button></div>"
-        "<button type=\"button\" id=\"save\">Speichern</button>"
-        "<small>Höchstens %d Farben. Keine Farbe = zufällige Farben. "
-        "Die Helligkeit wird begrenzt, dunkle Farben sind daher kaum sichtbar.</small></div>"
+        "title=\"%s\">+</button></div>"
+        "<button type=\"button\" id=\"save\">%s</button><small>",
+        t->colors, t->colors_intro, t->color_add, t->save);
+    ok = ok && append(buf, len, &pos, t->colors_hint_fmt, LED_PALETTE_MAX);
+    ok = ok && append(buf, len, &pos,
+        "</small></div>"
         "<script>"
         "var MAX=%d,L=document.getElementById('list'),A=document.getElementById('add'),"
         "M=document.getElementById('msg');"
         "function msg(t,e){M.textContent=t;M.className='msg'+(e?' err':'')}"
         "function row(c){var d=document.createElement('div'),i=document.createElement('input'),"
         "x=document.createElement('button');i.type='color';i.value=c;"
-        "x.type='button';x.className='x';x.textContent='×';x.title='Entfernen';"
+        "x.type='button';x.className='x';x.textContent='×';x.title='%s';"
         "x.onclick=function(){d.remove()};d.append(i,x);L.insertBefore(d,A)}"
         "fetch('/api/colors').then(function(r){return r.json()})"
         ".then(function(j){j.colors.forEach(row)})"
-        ".catch(function(){msg('Laden fehlgeschlagen.',1)});"
+        ".catch(function(){msg('%s',1)});"
         "A.onclick=function(){if(L.querySelectorAll('input').length<MAX)"
         "row('#'+('00000'+(Math.random()*16777216|0).toString(16)).slice(-6));"
-        "else msg('Höchstens '+MAX+' Farben.',1)};"
+        "else msg('%s'+MAX+'%s',1)};"
         "document.getElementById('save').onclick=function(){"
         "var c=[].map.call(L.querySelectorAll('input'),function(i){return i.value});"
         "fetch('/api/colors',{method:'PUT',headers:{'Content-Type':'application/json'},"
         "body:JSON.stringify({colors:c})}).then(function(r){return r.json().then(function(j){"
-        "if(r.ok)msg('Gespeichert.');else msg(j.error||'Fehler.',1)})})"
-        ".catch(function(){msg('Speichern fehlgeschlagen.',1)})};"
+        "if(r.ok)msg('%s');else msg(j.error||'%s',1)})})"
+        ".catch(function(){msg('%s',1)})};"
         "</script></main></body></html>",
-        LED_PALETTE_MAX, LED_PALETTE_MAX);
+        LED_PALETTE_MAX, t->js_remove, t->js_load_failed, t->js_max_before, t->js_max_after,
+        t->js_saved, t->js_error, t->js_save_failed);
     return ok ? (int)pos : -1;
+}
+
+int web_colors_page_render(char *buf, size_t len)
+{
+    return web_colors_page_render_lang(buf, len, WEB_LANG_DE);
 }

@@ -46,6 +46,8 @@ typedef struct {
 //   POST /led          GPIO und Anzahl der LEDs prüfen, speichern, Neustart anstoßen
 //   GET  /api/version  Firmware-Version als {"version":"2026.1"}
 // Im Empfänger-Modus antworten /colors und PUT /api/colors mit 403.
+// Seiten und Fehlermeldungen kommen auf Deutsch oder Englisch: zuerst zählt das
+// Cookie "lang" (Sprachschalter auf der Seite), sonst Accept-Language des Browsers.
 esp_err_t web_server_start(const web_server_ctx_t *ctx);
 
 // Übernimmt eine anderswo (z. B. per Bluetooth) geänderte Palette, damit

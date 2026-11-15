@@ -67,6 +67,14 @@ A menu at the top switches between two pages:
   color, then "Speichern". The page itself uses the REST API below.
 - **Einstellungen** (`/`): status and Wi-Fi settings, see below.
 
+The pages are in German or English. By default the device follows the
+browser's language (`Accept-Language`): German if the browser prefers German
+over English, English otherwise, and German when the browser sends no language
+at all. The **DE | EN** switch in the header overrides this for that browser;
+it stores the choice in a cookie (`lang`, kept for one year). Messages after
+saving and the `error` texts of the REST API use the same language. The page
+names below are the German ones; in English they are **Colors** and **Settings**.
+
 Both pages share one stylesheet, `/style.css`, stored in flash and cached by
 the browser for an hour. It follows the light/dark setting of the device and
 needs no internet (no external fonts or libraries).
@@ -248,7 +256,7 @@ speed, default hostname, default Bluetooth name) are `#define`s at the top of `m
 | Path | Content |
 |------|---------|
 | `main/` | Application: settings, boot flow (client or AP), `display` FreeRTOS task |
-| `components/led_signal/` | Hardware-independent logic: colors, rainbow and pulsing (`led_color.h`), twinkling (`led_twinkle.h`), color palette, its JSON and binary formats and checksum (`led_palette.h`), AP password (`led_password.h`), LED pin and count validation (`led_config.h`), Wi-Fi settings, AP SSID and Bluetooth name validation (`net_config.h`), form parsing and HTML pages (`web_form.h`), ESP-NOW settings and MAC lists (`espnow_config.h`), ESP-NOW messages (`espnow_proto.h`), channel search (`espnow_scan.h`) |
+| `components/led_signal/` | Hardware-independent logic: colors, rainbow and pulsing (`led_color.h`), twinkling (`led_twinkle.h`), color palette, its JSON and binary formats and checksum (`led_palette.h`), AP password (`led_password.h`), LED pin and count validation (`led_config.h`), Wi-Fi settings, AP SSID and Bluetooth name validation (`net_config.h`), form parsing and HTML pages (`web_form.h`), page language and messages in German and English (`web_lang.h`), ESP-NOW settings and MAC lists (`espnow_config.h`), ESP-NOW messages (`espnow_proto.h`), channel search (`espnow_scan.h`) |
 | `components/led_output/` | Thin wrapper around the `espressif/led_strip` driver (SPI backend with DMA, so radio load does not cause flicker): `led_output_init()`, `led_output_show()` |
 | `components/password_store/` | Loads the AP password from NVS, or creates and saves a new one |
 | `components/config_store/` | Loads and saves the client Wi-Fi settings in NVS |
