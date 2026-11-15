@@ -10,3 +10,4 @@ test/host/dependencies.lock
 build_esp32/
 sdkconfig.esp32
 sdkconfig.esp32.old
+dist/

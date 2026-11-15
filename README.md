@@ -17,6 +17,56 @@ also be set over **Bluetooth LE** (see below). Several strips can be linked
 with **ESP-NOW**: one gateway forwards its colors to receivers (see below).
 Brightness is capped at 25/255.
 
+## Install a release on the ESP32
+
+No ESP-IDF needed: download the firmware from the
+[Releases](https://github.com/Theannor/led_signal_basis/releases) page and flash
+it over USB. Every release has two files per chip:
+
+| Board | First install | Update (keeps settings) |
+|-------|---------------|-------------------------|
+| ESP32-C3 (e.g. SuperMini) | `led_signal_basis-<version>-esp32c3-full.bin` at `0x0` | `led_signal_basis-<version>-esp32c3-app.bin` at `0x10000` |
+| Classic ESP32 (e.g. D1 mini) | `led_signal_basis-<version>-esp32-full.bin` at `0x0` | `led_signal_basis-<version>-esp32-app.bin` at `0x10000` |
+
+- **`-full.bin`** holds the bootloader, partition table and app in one file. It
+  **erases all settings** (Wi-Fi, colors, Bluetooth name, ESP-NOW, LED pin;
+  the access point gets a new password). Use it for a new board.
+- **`-app.bin`** replaces only the firmware; all settings stay. Use it to
+  update a board that already runs `led_signal_basis`.
+
+`SHA256SUMS` lists the checksums of all files (`sha256sum -c SHA256SUMS`).
+
+**Option A: in the browser** (Chrome or Edge, nothing to install)
+
+1. Connect the board over USB and open the
+   [ESP web flasher](https://espressif.github.io/esptool-js/).
+2. Click **Connect** and pick the board's serial port. If no port shows up or the
+   connection fails, hold the board's **BOOT** button while plugging it in.
+3. Under *Flash Address* enter `0x0` (full image) or `0x10000` (app image),
+   choose the file and click **Program**.
+4. When it's done, press **RESET** or unplug and plug the board back in.
+
+**Option B: on the command line** with [esptool](https://docs.espressif.com/projects/esptool/)
+(`pip install esptool`, Python 3):
+
+```sh
+# First install (erases settings)
+esptool --chip esp32c3 --port /dev/ttyACM0 write-flash 0x0 led_signal_basis-<version>-esp32c3-full.bin
+# Update (keeps settings)
+esptool --chip esp32c3 --port /dev/ttyACM0 write-flash 0x10000 led_signal_basis-<version>-esp32c3-app.bin
+```
+
+For a classic ESP32, use `--chip esp32` and the `-esp32-` files. The port is
+usually `/dev/ttyACM0` or `/dev/ttyUSB0` on Linux, `/dev/cu.usbmodem…` or
+`/dev/cu.usbserial…` on macOS and `COM3` (etc.) on Windows. With esptool older
+than v5, the command is `esptool.py … write_flash …`.
+
+By default the strip's data line goes to GPIO10 (ESP32-C3) or GPIO21 (classic
+ESP32); another pin can be set on the web site later (see [Hardware](#hardware)).
+After the first install, the board opens its own access point and shows the
+password on the strip; [Access point](#access-point) explains how to set up
+your Wi-Fi from there.
+
 ## Network modes
 
 At every boot (devices set up as ESP-NOW receiver work differently, see
@@ -341,6 +391,34 @@ The version appears in the boot log (`main: led_signal_basis Version 2026.1`),
 on the *Status* page, and at `GET /api/version`.
 CMake only reads the tag when the project is configured: after setting a new
 tag, run `idf.py reconfigure` (or a clean build) so the version is updated.
+
+### Publishing a release on GitHub
+
+On a clean working tree with all tests passing (version `2026.1` as example):
+
+```sh
+git tag -a v2026.1 -m "Release 2026.1"
+
+# Build both chips; reconfigure reads the new tag. merge-bin writes merged-binary.bin
+idf.py reconfigure build merge-bin
+idf.py -B build_esp32 -D SDKCONFIG=sdkconfig.esp32 -D IDF_TARGET=esp32 reconfigure build merge-bin
+
+# Collect the files under the names used in "Install a release"
+V=2026.1; mkdir -p dist
+cp build/merged-binary.bin        dist/led_signal_basis-$V-esp32c3-full.bin
+cp build/led_signal_basis.bin     dist/led_signal_basis-$V-esp32c3-app.bin
+cp build_esp32/merged-binary.bin  dist/led_signal_basis-$V-esp32-full.bin
+cp build_esp32/led_signal_basis.bin dist/led_signal_basis-$V-esp32-app.bin
+(cd dist && sha256sum *.bin > SHA256SUMS)
+
+git push origin main v2026.1
+gh release create v2026.1 dist/* --title "2026.1" --generate-notes
+```
+
+The build log must show `Projektversion (PEP 440): 2026.1`. With a `.devN` or
+`.dirty` version, the tree is not exactly on the tag. `dist/` is not committed.
+Instead of `gh`, the release can also be created on the GitHub web page
+(*Releases → Draft a new release*, choose the tag, attach the files from `dist/`).
 
 ## Run the tests
 
