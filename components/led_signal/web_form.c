@@ -10,6 +10,8 @@
 #include "espnow_config.h"
 #include "net_config.h"
 
+#define WEB_TITLE "LED-Signal"  // Tab-Titel und Name in der Kopfleiste
+
 // Wert einer Hex-Ziffer, -1 bei ungültigem Zeichen
 static int hex_value(char c)
 {
@@ -231,8 +233,8 @@ static bool append_head(char *buf, size_t len, size_t *pos, page_t page, bool sh
     return append(buf, len, pos,
         "<!DOCTYPE html><html lang=\"de\"><head><meta charset=\"utf-8\">"
         "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
-        "<title>led_signal_basis</title><link rel=\"stylesheet\" href=\"/style.css\">"
-        "</head><body><header><span class=\"brand\">led_signal_basis</span>"
+        "<title>" WEB_TITLE "</title><link rel=\"stylesheet\" href=\"/style.css\">"
+        "</head><body><header><span class=\"brand\">" WEB_TITLE "</span>"
         "<nav>%s%s%s<a href=\"/\"%s>Einstellungen</a></nav>"
         "</header><main>",
         show_colors ? "<a href=\"/colors\"" : "",
