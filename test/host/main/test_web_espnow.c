@@ -18,6 +18,7 @@ static const uint8_t OWN_MAC[6] = {0x02, 0x11, 0x22, 0x33, 0x44, 0x55};
 
 static esp_err_t (*s_get_root)(httpd_req_t *req);
 static esp_err_t (*s_get_status)(httpd_req_t *req);
+static esp_err_t (*s_get_espnow)(httpd_req_t *req);
 static esp_err_t (*s_get_colors)(httpd_req_t *req);
 static esp_err_t (*s_put_colors)(httpd_req_t *req);
 static esp_err_t (*s_post_espnow)(httpd_req_t *req);
@@ -46,6 +47,8 @@ static esp_err_t register_stub(httpd_handle_t handle, const httpd_uri_t *uri, in
         s_get_colors = uri->handler;
     } else if (strcmp(uri->uri, "/api/colors") == 0 && uri->method == HTTP_PUT) {
         s_put_colors = uri->handler;
+    } else if (strcmp(uri->uri, "/espnow") == 0 && uri->method == HTTP_GET) {
+        s_get_espnow = uri->handler;
     } else if (strcmp(uri->uri, "/espnow") == 0 && uri->method == HTTP_POST) {
         s_post_espnow = uri->handler;
     }
@@ -109,7 +112,7 @@ static void start_server(bool receiver_mode, const espnow_config_t *espnow)
     s_restarts = 0;
     s_saved_len = 0;
     s_sent[0] = s_status[0] = '\0';
-    s_get_root = s_get_status = s_get_colors = s_put_colors = s_post_espnow = NULL;
+    s_get_root = s_get_status = s_get_espnow = s_get_colors = s_put_colors = s_post_espnow = NULL;
     httpd_start_Stub(start_stub);
     httpd_register_uri_handler_Stub(register_stub);
     // Keine Cookie- und Accept-Language-Header -> deutsche Seiten
@@ -164,8 +167,10 @@ static void test_render_espnow_card(void)
         .espnow_peers = "aa:bb:cc:dd:ee:02, 10:20:30:40:50:60",
         .espnow_gateway = "",
         .espnow_window_s = 60,
+        .settings_page = WEB_SETTINGS_ESPNOW,
     };
     TEST_ASSERT_GREATER_THAN(0, web_page_render(buf, sizeof(buf), &info));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "<a href=\"/espnow\" class=\"cur\">ESP-NOW</a>"));
     TEST_ASSERT_NOT_NULL(strstr(buf, "action=\"/espnow\""));
     TEST_ASSERT_NOT_NULL(strstr(buf, "value=\"gateway\" checked"));
     TEST_ASSERT_NULL(strstr(buf, "value=\"receiver\" checked"));
@@ -206,7 +211,8 @@ static void test_page_with_full_peer_list_fits(void)
     cfg.peer_count = ESPNOW_PEERS_MAX;
     start_server(false, &cfg);
     httpd_req_t req = {0};
-    TEST_ASSERT_EQUAL(ESP_OK, s_get_root(&req));
+    TEST_ASSERT_NOT_NULL(s_get_espnow);
+    TEST_ASSERT_EQUAL(ESP_OK, s_get_espnow(&req));
     TEST_ASSERT_EQUAL_STRING("200 OK", s_status);
     TEST_ASSERT_NOT_NULL(strstr(s_sent, "02:00:00:00:00:0a\""));
     TEST_ASSERT_NOT_NULL(strstr(s_sent, "</main></body></html>"));
@@ -300,7 +306,7 @@ static void test_receiver_mode_blocks_colors(void)
     TEST_ASSERT_EQUAL_STRING("403 Forbidden", s_status);
     TEST_ASSERT_NOT_NULL(strstr(s_sent, "\"error\""));
 
-    TEST_ASSERT_EQUAL(ESP_OK, s_get_root(&req));
+    TEST_ASSERT_EQUAL(ESP_OK, s_get_espnow(&req));
     TEST_ASSERT_EQUAL_STRING("200 OK", s_status);
     TEST_ASSERT_NULL(strstr(s_sent, "href=\"/colors\""));
     TEST_ASSERT_NOT_NULL(strstr(s_sent, "value=\"aa:bb:cc:dd:ee:02\""));

@@ -213,11 +213,11 @@ static void test_error_json(void)
     TEST_ASSERT_EQUAL_INT(13, web_error_json("x", buf, 14));
 }
 
-// Vollständige Einstellungen-Seite mit allen Bereichen rendern
-static int render_full(char *buf, size_t len, web_lang_t lang)
+// Unterseite der Einstellungen mit allen Bereichen im Untermenü rendern
+static int render_full(char *buf, size_t len, web_lang_t lang, web_settings_page_t page)
 {
     web_page_info_t info = {
-        .lang = lang, .client_mode = true, .ip = "1.2.3.4", .hostname = "h", .ssid = "s", .version = "2026.1",
+        .lang = lang, .settings_page = page, .client_mode = true, .ip = "1.2.3.4", .hostname = "h", .ssid = "s", .version = "2026.1",
         .ble_name = "Lampe", .own_mac = "aa:bb:cc:dd:ee:ff", .espnow_peers = "", .espnow_gateway = "",
         .espnow_window_s = 60, .led_gpio_mask = 1ULL << 10, .led_gpio = 10, .led_count = 16,
         .message = "Hinweis",
@@ -228,46 +228,61 @@ static int render_full(char *buf, size_t len, web_lang_t lang)
 static void test_page_english(void)
 {
     char buf[8192];
-    TEST_ASSERT_GREATER_THAN(0, render_full(buf, sizeof(buf), WEB_LANG_EN));
+    TEST_ASSERT_GREATER_THAN(0, render_full(buf, sizeof(buf), WEB_LANG_EN, WEB_SETTINGS_WIFI));
     TEST_ASSERT_NOT_NULL(strstr(buf, "<html lang=\"en\">"));
     TEST_ASSERT_NOT_NULL(strstr(buf, "<h1>Settings</h1>"));
     TEST_ASSERT_NOT_NULL(strstr(buf, "<a href=\"/\" class=\"cur\">Settings</a>"));
     TEST_ASSERT_NOT_NULL(strstr(buf, "<a href=\"/colors\">Colors</a>"));
     TEST_ASSERT_NOT_NULL(strstr(buf, "<a href=\"/status\">Status</a>"));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "<nav class=\"sub\"><a href=\"/\" class=\"cur\">Wi-Fi</a>"
+                                     "<a href=\"/ble\">Bluetooth</a><a href=\"/espnow\">ESP-NOW</a>"
+                                     "<a href=\"/led\">LED strip</a></nav>"));
     TEST_ASSERT_NOT_NULL(strstr(buf, "Save and restart"));
-    TEST_ASSERT_NOT_NULL(strstr(buf, "1 to 20 characters"));
-    TEST_ASSERT_NOT_NULL(strstr(buf, "Own MAC: aa:bb:cc:dd:ee:ff. At most 10 receivers."));
-    TEST_ASSERT_NOT_NULL(strstr(buf, "for 60 s;"));
-    TEST_ASSERT_NOT_NULL(strstr(buf, "16 to 25 LEDs."));
     // Keine deutschen Texte der Seite
     TEST_ASSERT_NULL(strstr(buf, "Speichern"));
     TEST_ASSERT_NULL(strstr(buf, "Einstellungen"));
+    TEST_ASSERT_GREATER_THAN(0, render_full(buf, sizeof(buf), WEB_LANG_EN, WEB_SETTINGS_BLE));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "1 to 20 characters"));
+    TEST_ASSERT_GREATER_THAN(0, render_full(buf, sizeof(buf), WEB_LANG_EN, WEB_SETTINGS_ESPNOW));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "Own MAC: aa:bb:cc:dd:ee:ff. At most 10 receivers."));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "for 60 s;"));
+    TEST_ASSERT_GREATER_THAN(0, render_full(buf, sizeof(buf), WEB_LANG_EN, WEB_SETTINGS_LED));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "16 to 25 LEDs."));
+    TEST_ASSERT_NULL(strstr(buf, "Speichern"));
 }
 
 static void test_page_german_default(void)
 {
     char buf[8192];
-    TEST_ASSERT_GREATER_THAN(0, render_full(buf, sizeof(buf), WEB_LANG_DE));
+    TEST_ASSERT_GREATER_THAN(0, render_full(buf, sizeof(buf), WEB_LANG_DE, WEB_SETTINGS_WIFI));
     TEST_ASSERT_NOT_NULL(strstr(buf, "<html lang=\"de\">"));
     TEST_ASSERT_NOT_NULL(strstr(buf, "<h1>Einstellungen</h1>"));
-    TEST_ASSERT_NOT_NULL(strstr(buf, "1 bis 20 Zeichen, keine Umlaute."));
-    TEST_ASSERT_NOT_NULL(strstr(buf, "Eigene MAC: aa:bb:cc:dd:ee:ff. Höchstens 10 Empfänger."));
-    TEST_ASSERT_NOT_NULL(strstr(buf, "16 bis 25 LEDs."));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "<nav class=\"sub\"><a href=\"/\" class=\"cur\">WLAN</a>"));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "<a href=\"/led\">LED-Strip</a></nav>"));
     TEST_ASSERT_NULL(strstr(buf, "Save and restart"));
+    TEST_ASSERT_GREATER_THAN(0, render_full(buf, sizeof(buf), WEB_LANG_DE, WEB_SETTINGS_BLE));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "1 bis 20 Zeichen, keine Umlaute."));
+    TEST_ASSERT_GREATER_THAN(0, render_full(buf, sizeof(buf), WEB_LANG_DE, WEB_SETTINGS_ESPNOW));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "Eigene MAC: aa:bb:cc:dd:ee:ff. Höchstens 10 Empfänger."));
+    TEST_ASSERT_GREATER_THAN(0, render_full(buf, sizeof(buf), WEB_LANG_DE, WEB_SETTINGS_LED));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "16 bis 25 LEDs."));
 }
 
 static void test_page_lang_switch(void)
 {
     char buf[8192];
     // Deutsch markiert, Englisch setzt das Cookie und lädt die Seite neu
-    TEST_ASSERT_GREATER_THAN(0, render_full(buf, sizeof(buf), WEB_LANG_DE));
+    TEST_ASSERT_GREATER_THAN(0, render_full(buf, sizeof(buf), WEB_LANG_DE, WEB_SETTINGS_WIFI));
     TEST_ASSERT_NOT_NULL(strstr(buf, "<nav class=\"lang\"><a class=\"cur\" title=\"Deutsch\">DE</a>"
                                      "<a href=\"/\" title=\"English\" onclick=\"document.cookie="
                                      "'lang=en;path=/;max-age=31536000;samesite=lax'\">EN</a></nav>"));
-    TEST_ASSERT_GREATER_THAN(0, render_full(buf, sizeof(buf), WEB_LANG_EN));
+    TEST_ASSERT_GREATER_THAN(0, render_full(buf, sizeof(buf), WEB_LANG_EN, WEB_SETTINGS_WIFI));
     TEST_ASSERT_NOT_NULL(strstr(buf, "<a href=\"/\" title=\"Deutsch\" onclick=\"document.cookie="
                                      "'lang=de;path=/;max-age=31536000;samesite=lax'\">DE</a>"));
     TEST_ASSERT_NOT_NULL(strstr(buf, "<a class=\"cur\" title=\"English\">EN</a>"));
+    // Auf einer Unterseite führt der Schalter zurück auf diese Unterseite
+    TEST_ASSERT_GREATER_THAN(0, render_full(buf, sizeof(buf), WEB_LANG_DE, WEB_SETTINGS_ESPNOW));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "<a href=\"/espnow\" title=\"English\""));
     // Auf der Farben-Seite führt der Schalter zurück auf /colors
     TEST_ASSERT_GREATER_THAN(0, web_colors_page_render_lang(buf, sizeof(buf), WEB_LANG_DE));
     TEST_ASSERT_NOT_NULL(strstr(buf, "<a href=\"/colors\" title=\"English\""));

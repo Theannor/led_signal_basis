@@ -22,9 +22,18 @@ void web_form_trim(char *s);
 // Ersetzt & < > " ' durch HTML-Entities. false, wenn out zu klein ist.
 bool web_html_escape(const char *in, char *out, size_t out_len);
 
+// Unterseiten der Einstellungen (Untermenü); Pfade /, /ble, /espnow, /led
+typedef enum {
+    WEB_SETTINGS_WIFI = 0,   // WLAN und Hostname (/)
+    WEB_SETTINGS_BLE,        // Bluetooth-Name (/ble)
+    WEB_SETTINGS_ESPNOW,     // ESP-NOW-Rolle (/espnow)
+    WEB_SETTINGS_LED,        // LED-Strip (/led)
+} web_settings_page_t;
+
 // Daten für die Konfigurationsseite (Texte dürfen NULL sein)
 typedef struct {
     web_lang_t lang;         // Sprache der Seite (0 = Deutsch)
+    web_settings_page_t settings_page;  // gezeigte Unterseite der Einstellungen
     bool client_mode;        // true = als Client im WLAN, false = eigener AP
     const char *ip;          // aktuelle IP-Adresse
     const char *hostname;    // aktueller Hostname
@@ -46,7 +55,10 @@ typedef struct {
     unsigned led_count;          // gespeicherte Anzahl LEDs
 } web_page_info_t;
 
-// Baut die Einstellungen-Seite (mit Menü, im Empfänger-Modus ohne Farben) nach buf. Gibt die Länge zurück, -1 wenn buf zu klein ist.
+// Baut die Unterseite info->settings_page der Einstellungen (Menü, im Empfänger-Modus
+// ohne Farben, und Untermenü der vorhandenen Unterseiten) nach buf. Bluetooth nur mit
+// ble_name, ESP-NOW nur mit own_mac, LED nur mit led_gpio_mask; fehlt die Unterseite,
+// wird WLAN gezeigt. Gibt die Länge zurück, -1 wenn buf zu klein ist.
 // Das Client-Passwort wird nie in die Seite geschrieben.
 int web_page_render(char *buf, size_t len, const web_page_info_t *info);
 

@@ -15,6 +15,10 @@ static int s_dummy_server;
 #define MASK        (LED_CONFIG_GPIO_BIT(4) | LED_CONFIG_GPIO_BIT(10) | LED_CONFIG_GPIO_BIT(21))
 
 static esp_err_t (*s_get_root)(httpd_req_t *req);
+// GET-Handler der Unterseiten /ble, /espnow, /led
+static esp_err_t (*s_get_ble)(httpd_req_t *req);
+static esp_err_t (*s_get_espnow)(httpd_req_t *req);
+static esp_err_t (*s_get_led)(httpd_req_t *req);
 static esp_err_t (*s_post_led)(httpd_req_t *req);
 
 static const char *s_body;
@@ -34,6 +38,12 @@ static esp_err_t register_stub(httpd_handle_t handle, const httpd_uri_t *uri, in
 {
     if (strcmp(uri->uri, "/") == 0 && uri->method == HTTP_GET) {
         s_get_root = uri->handler;
+    } else if (strcmp(uri->uri, "/ble") == 0 && uri->method == HTTP_GET) {
+        s_get_ble = uri->handler;
+    } else if (strcmp(uri->uri, "/espnow") == 0 && uri->method == HTTP_GET) {
+        s_get_espnow = uri->handler;
+    } else if (strcmp(uri->uri, "/led") == 0 && uri->method == HTTP_GET) {
+        s_get_led = uri->handler;
     } else if (strcmp(uri->uri, "/led") == 0 && uri->method == HTTP_POST) {
         s_post_led = uri->handler;
     }
@@ -89,7 +99,7 @@ static void start_server(void)
     };
     s_restarts = 0;
     s_sent[0] = s_status[0] = '\0';
-    s_get_root = s_post_led = NULL;
+    s_get_root = s_get_ble = s_get_espnow = s_get_led = s_post_led = NULL;
     httpd_start_Stub(start_stub);
     httpd_register_uri_handler_Stub(register_stub);
     // Keine Cookie- und Accept-Language-Header -> deutsche Seiten
@@ -133,7 +143,8 @@ static void expect_save(uint8_t gpio, uint8_t count)
 static void test_render_led_card_only_with_mask(void)
 {
     char buf[4096];
-    web_page_info_t info = {.hostname = "lampe", .led_gpio_mask = MASK, .led_gpio = 21, .led_count = 20};
+    web_page_info_t info = {.hostname = "lampe", .led_gpio_mask = MASK, .led_gpio = 21, .led_count = 20,
+                            .settings_page = WEB_SETTINGS_LED};
     TEST_ASSERT_GREATER_THAN(0, web_page_render(buf, sizeof(buf), &info));
     TEST_ASSERT_NOT_NULL(strstr(buf, "action=\"/led\""));
     TEST_ASSERT_NOT_NULL(strstr(buf, "<option value=\"4\">GPIO 4</option>"));
@@ -146,17 +157,42 @@ static void test_render_led_card_only_with_mask(void)
     info.led_gpio_mask = 0;
     TEST_ASSERT_GREATER_THAN(0, web_page_render(buf, sizeof(buf), &info));
     TEST_ASSERT_NULL(strstr(buf, "/led"));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "action=\"/config\""));
+}
+
+// Jede Unterseite zeigt genau ihre Karte und das Untermenü mit allen vier Einträgen
+static void check_subpage(esp_err_t (*handler)(httpd_req_t *), const char *action, const char *cur)
+{
+    static const char *const actions[] = {"/config", "/ble", "/espnow", "/led"};
+    httpd_req_t req = {0};
+    TEST_ASSERT_NOT_NULL(handler);
+    TEST_ASSERT_EQUAL(ESP_OK, handler(&req));
+    TEST_ASSERT_EQUAL_STRING("200 OK", s_status);
+    TEST_ASSERT_NOT_NULL(strstr(s_sent, "<nav class=\"sub\"><a href=\"/\""));
+    TEST_ASSERT_NOT_NULL(strstr(s_sent, "<a href=\"/ble\""));
+    TEST_ASSERT_NOT_NULL(strstr(s_sent, "<a href=\"/espnow\""));
+    TEST_ASSERT_NOT_NULL(strstr(s_sent, "<a href=\"/led\""));
+    TEST_ASSERT_NOT_NULL(strstr(s_sent, cur));
+    for (size_t i = 0; i < sizeof(actions) / sizeof(actions[0]); i++) {
+        char form[40];
+        snprintf(form, sizeof(form), "action=\"%s\"", actions[i]);
+        if (strcmp(actions[i], action) == 0) {
+            TEST_ASSERT_NOT_NULL(strstr(s_sent, form));
+        } else {
+            TEST_ASSERT_NULL(strstr(s_sent, form));
+        }
+    }
 }
 
 static void test_full_page_fits(void)
 {
     start_server();
-    httpd_req_t req = {0};
-    TEST_ASSERT_EQUAL(ESP_OK, s_get_root(&req));
-    TEST_ASSERT_EQUAL_STRING("200 OK", s_status);
-    TEST_ASSERT_NOT_NULL(strstr(s_sent, "action=\"/led\""));
-    TEST_ASSERT_NOT_NULL(strstr(s_sent, "action=\"/espnow\""));
-    TEST_ASSERT_NOT_NULL(strstr(s_sent, "action=\"/ble\""));
+    check_subpage(s_get_root, "/config", "<a href=\"/\" class=\"cur\">WLAN</a>");
+    check_subpage(s_get_ble, "/ble", "<a href=\"/ble\" class=\"cur\">Bluetooth</a>");
+    check_subpage(s_get_espnow, "/espnow", "<a href=\"/espnow\" class=\"cur\">ESP-NOW</a>");
+    check_subpage(s_get_led, "/led", "<a href=\"/led\" class=\"cur\">LED-Strip</a>");
+    // Menü: Einstellungen auf allen Unterseiten markiert
+    TEST_ASSERT_NOT_NULL(strstr(s_sent, "<a href=\"/\" class=\"cur\">Einstellungen</a>"));
     stop_server();
 }
 

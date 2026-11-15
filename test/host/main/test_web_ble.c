@@ -15,6 +15,7 @@ static int s_dummy_server;
 #define FAKE_NVS    ((nvs_handle_t)5)
 
 static esp_err_t (*s_get_root)(httpd_req_t *req);
+static esp_err_t (*s_get_ble)(httpd_req_t *req);
 static esp_err_t (*s_post_ble)(httpd_req_t *req);
 static esp_err_t (*s_api_get)(httpd_req_t *req);
 
@@ -36,6 +37,8 @@ static esp_err_t register_stub(httpd_handle_t handle, const httpd_uri_t *uri, in
 {
     if (strcmp(uri->uri, "/") == 0 && uri->method == HTTP_GET) {
         s_get_root = uri->handler;
+    } else if (strcmp(uri->uri, "/ble") == 0 && uri->method == HTTP_GET) {
+        s_get_ble = uri->handler;
     } else if (strcmp(uri->uri, "/ble") == 0 && uri->method == HTTP_POST) {
         s_post_ble = uri->handler;
     } else if (strcmp(uri->uri, "/api/colors") == 0 && uri->method == HTTP_GET) {
@@ -89,13 +92,14 @@ static void start_server(const char *ble_name)
     strlcpy(ctx.ble_name, ble_name, sizeof(ctx.ble_name));
     s_restarts = 0;
     s_sent[0] = s_status[0] = '\0';
-    s_get_root = s_post_ble = s_api_get = NULL;
+    s_get_root = s_get_ble = s_post_ble = s_api_get = NULL;
     httpd_start_Stub(start_stub);
     httpd_register_uri_handler_Stub(register_stub);
     // Keine Cookie- und Accept-Language-Header -> deutsche Seiten
     httpd_req_get_hdr_value_str_IgnoreAndReturn(ESP_ERR_NOT_FOUND);
     TEST_ASSERT_EQUAL(ESP_OK, web_server_start(&ctx));
     TEST_ASSERT_NOT_NULL(s_get_root);
+    TEST_ASSERT_NOT_NULL(s_get_ble);
     TEST_ASSERT_NOT_NULL(s_post_ble);
     TEST_ASSERT_NOT_NULL(s_api_get);
 
@@ -133,15 +137,21 @@ static void expect_save_name(const char *name)
 static void test_render_shows_ble_card_only_with_name(void)
 {
     char buf[4096];
-    web_page_info_t info = {.client_mode = true, .hostname = "lampe", .ble_name = "Mein <LED>"};
+    web_page_info_t info = {.client_mode = true, .hostname = "lampe", .ble_name = "Mein <LED>",
+                            .settings_page = WEB_SETTINGS_BLE};
     TEST_ASSERT_GREATER_THAN(0, web_page_render(buf, sizeof(buf), &info));
     TEST_ASSERT_NOT_NULL(strstr(buf, "action=\"/ble\""));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "<a href=\"/ble\" class=\"cur\">Bluetooth</a>"));
+    // Nur die Bluetooth-Karte
+    TEST_ASSERT_NULL(strstr(buf, "action=\"/config\""));
     TEST_ASSERT_NOT_NULL(strstr(buf, "value=\"Mein &lt;LED&gt;\""));
     TEST_ASSERT_NOT_NULL(strstr(buf, "</main></body></html>"));
 
+    // Ohne Namen weder Unterseite noch Menüeintrag: WLAN wird gezeigt
     info.ble_name = NULL;
     TEST_ASSERT_GREATER_THAN(0, web_page_render(buf, sizeof(buf), &info));
     TEST_ASSERT_NULL(strstr(buf, "/ble"));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "action=\"/config\""));
     TEST_ASSERT_NOT_NULL(strstr(buf, "</main></body></html>"));
 }
 
@@ -150,7 +160,7 @@ static void test_page_with_longest_values_fits(void)
     // Längste Eingaben, die überall maskiert werden müssen
     start_server("\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"");
     httpd_req_t req = {0};
-    TEST_ASSERT_EQUAL(ESP_OK, s_get_root(&req));
+    TEST_ASSERT_EQUAL(ESP_OK, s_get_ble(&req));
     TEST_ASSERT_EQUAL_STRING("200 OK", s_status);
     TEST_ASSERT_NOT_NULL(strstr(s_sent, "action=\"/ble\""));
     // Andere Tests empfangen die Seite in 4096-Byte-Puffern

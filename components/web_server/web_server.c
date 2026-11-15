@@ -17,7 +17,7 @@
 // Grenzen für Anfrage und Antwort
 #define WEB_BODY_MAX   768   // ESP-NOW-Liste: bis zu 10 URL-kodierte MAC-Adressen
 #define WEB_PAGE_MAX   6144
-#define WEB_URI_MAX    12    // Platz für Seiten-Handler
+#define WEB_URI_MAX    16    // Platz für Seiten-Handler
 #define WEB_JSON_MAX   256   // reicht für LED_PALETTE_MAX Farben
 #define WEB_VERSION_UNKNOWN  "0+unknown"   // wenn ctx.version fehlt
 #define WEB_CSS_CACHE  "max-age=3600"  // Stylesheet eine Stunde im Browser-Cache
@@ -132,12 +132,14 @@ static esp_err_t send_rendered(httpd_req_t *req, const char *status,
     return err;
 }
 
-// Einstellungen-Seite mit optionalem Hinweis in der Sprache der Anfrage senden
-static esp_err_t send_page(httpd_req_t *req, const char *status, web_msg_t msg, bool is_error)
+// Unterseite der Einstellungen mit optionalem Hinweis in der Sprache der Anfrage senden
+static esp_err_t send_page(httpd_req_t *req, const char *status, web_settings_page_t page,
+                           web_msg_t msg, bool is_error)
 {
     web_page_info_t info;
     page_bufs_t bufs;
     fill_page_info(req, &info, &bufs);
+    info.settings_page = page;
     info.message = web_msg(info.lang, msg);
     info.message_is_error = is_error;
     return send_rendered(req, status, web_page_render, &info);
@@ -152,15 +154,31 @@ static esp_err_t handle_get_status_page(httpd_req_t *req)
     return send_rendered(req, "200 OK", web_status_page_render, &info);
 }
 
+// Unterseiten der Einstellungen: WLAN (/), Bluetooth, ESP-NOW, LED-Strip
 static esp_err_t handle_get_root(httpd_req_t *req)
 {
-    return send_page(req, "200 OK", WEB_MSG_NONE, false);
+    return send_page(req, "200 OK", WEB_SETTINGS_WIFI, WEB_MSG_NONE, false);
+}
+
+static esp_err_t handle_get_ble_page(httpd_req_t *req)
+{
+    return send_page(req, "200 OK", WEB_SETTINGS_BLE, WEB_MSG_NONE, false);
+}
+
+static esp_err_t handle_get_espnow_page(httpd_req_t *req)
+{
+    return send_page(req, "200 OK", WEB_SETTINGS_ESPNOW, WEB_MSG_NONE, false);
+}
+
+static esp_err_t handle_get_led_page(httpd_req_t *req)
+{
+    return send_page(req, "200 OK", WEB_SETTINGS_LED, WEB_MSG_NONE, false);
 }
 
 static esp_err_t handle_get_colors_page(httpd_req_t *req)
 {
     if (s_ctx.receiver_mode) {
-        return send_page(req, "403 Forbidden", WEB_MSG_RECEIVER, true);
+        return send_page(req, "403 Forbidden", WEB_SETTINGS_WIFI, WEB_MSG_RECEIVER, true);
     }
     web_lang_t lang = request_lang(req);
     char *page = malloc(WEB_PAGE_MAX);
@@ -273,7 +291,7 @@ static esp_err_t handle_post_config(httpd_req_t *req)
 {
     char body[WEB_BODY_MAX];
     if (!read_body(req, body, sizeof(body))) {
-        return send_page(req, "400 Bad Request", WEB_MSG_BAD_REQUEST, true);
+        return send_page(req, "400 Bad Request", WEB_SETTINGS_WIFI, WEB_MSG_BAD_REQUEST, true);
     }
 
     // Neue Werte auf Basis der gespeicherten Konfiguration
@@ -281,10 +299,10 @@ static esp_err_t handle_post_config(httpd_req_t *req)
     char password[NET_CONFIG_PASSWORD_MAX + 1];
     char open_flag[4];
     if (!web_form_get_field(body, "ssid", cfg.ssid, sizeof(cfg.ssid))) {
-        return send_page(req, "400 Bad Request", error_text(NET_CONFIG_ERR_SSID), true);
+        return send_page(req, "400 Bad Request", WEB_SETTINGS_WIFI, error_text(NET_CONFIG_ERR_SSID), true);
     }
     if (!web_form_get_field(body, "hostname", cfg.hostname, sizeof(cfg.hostname))) {
-        return send_page(req, "400 Bad Request", error_text(NET_CONFIG_ERR_HOSTNAME), true);
+        return send_page(req, "400 Bad Request", WEB_SETTINGS_WIFI, error_text(NET_CONFIG_ERR_HOSTNAME), true);
     }
     // Handy-Tastaturen hängen gern ein Leerzeichen an -> entfernen (nicht beim Passwort)
     web_form_trim(cfg.ssid);
@@ -297,20 +315,20 @@ static esp_err_t handle_post_config(httpd_req_t *req)
         }
         // leer = bisheriges Passwort behalten
     } else if (strstr(body, "password=") != NULL) {
-        return send_page(req, "400 Bad Request", error_text(NET_CONFIG_ERR_PASSWORD), true);
+        return send_page(req, "400 Bad Request", WEB_SETTINGS_WIFI, error_text(NET_CONFIG_ERR_PASSWORD), true);
     }
 
     net_config_result_t result = net_config_validate(&cfg);
     if (result != NET_CONFIG_OK) {
-        return send_page(req, "400 Bad Request", error_text(result), true);
+        return send_page(req, "400 Bad Request", WEB_SETTINGS_WIFI, error_text(result), true);
     }
 
     esp_err_t err = config_store_save(&cfg);
     if (err != ESP_OK) {
-        return send_page(req, "500 Internal Server Error", WEB_MSG_SAVE_FAILED, true);
+        return send_page(req, "500 Internal Server Error", WEB_SETTINGS_WIFI, WEB_MSG_SAVE_FAILED, true);
     }
     s_ctx.config = cfg;
-    err = send_page(req, "200 OK", WEB_MSG_SAVED_RESTART, false);
+    err = send_page(req, "200 OK", WEB_SETTINGS_WIFI, WEB_MSG_SAVED_RESTART, false);
     if (s_ctx.schedule_restart != NULL) {
         s_ctx.schedule_restart();
     }
@@ -322,21 +340,21 @@ static esp_err_t handle_post_ble(httpd_req_t *req)
     const web_msg_t invalid = WEB_MSG_BLE_NAME;
     char body[WEB_BODY_MAX];
     if (!read_body(req, body, sizeof(body))) {
-        return send_page(req, "400 Bad Request", WEB_MSG_BAD_REQUEST, true);
+        return send_page(req, "400 Bad Request", WEB_SETTINGS_BLE, WEB_MSG_BAD_REQUEST, true);
     }
     char name[NET_CONFIG_BLE_NAME_MAX + 1];
     if (!web_form_get_field(body, "ble_name", name, sizeof(name))) {
-        return send_page(req, "400 Bad Request", invalid, true);
+        return send_page(req, "400 Bad Request", WEB_SETTINGS_BLE, invalid, true);
     }
     web_form_trim(name);
     if (!net_config_ble_name_is_valid(name)) {
-        return send_page(req, "400 Bad Request", invalid, true);
+        return send_page(req, "400 Bad Request", WEB_SETTINGS_BLE, invalid, true);
     }
     if (ble_name_store_save(name) != ESP_OK) {
-        return send_page(req, "500 Internal Server Error", WEB_MSG_SAVE_FAILED, true);
+        return send_page(req, "500 Internal Server Error", WEB_SETTINGS_BLE, WEB_MSG_SAVE_FAILED, true);
     }
     strlcpy(s_ctx.ble_name, name, sizeof(s_ctx.ble_name));
-    esp_err_t err = send_page(req, "200 OK", WEB_MSG_SAVED_RESTART, false);
+    esp_err_t err = send_page(req, "200 OK", WEB_SETTINGS_BLE, WEB_MSG_SAVED_RESTART, false);
     if (s_ctx.schedule_restart != NULL) {
         s_ctx.schedule_restart();
     }
@@ -357,7 +375,7 @@ static esp_err_t handle_post_espnow(httpd_req_t *req)
 {
     char body[WEB_BODY_MAX];
     if (!read_body(req, body, sizeof(body))) {
-        return send_page(req, "400 Bad Request", WEB_MSG_BAD_REQUEST, true);
+        return send_page(req, "400 Bad Request", WEB_SETTINGS_ESPNOW, WEB_MSG_BAD_REQUEST, true);
     }
     espnow_config_t cfg = s_ctx.espnow;
     char role[12];
@@ -369,24 +387,24 @@ static esp_err_t handle_post_espnow(httpd_req_t *req)
     } else if (strcmp(role, "receiver") == 0) {
         cfg.role = ESPNOW_ROLE_RECEIVER;
     } else {
-        return send_page(req, "400 Bad Request", espnow_error_text(ESPNOW_CONFIG_ERR_ROLE), true);
+        return send_page(req, "400 Bad Request", WEB_SETTINGS_ESPNOW, espnow_error_text(ESPNOW_CONFIG_ERR_ROLE), true);
     }
 
     // Fehlende Felder gelten als leer, zu lange als Fehler
     char peers[ESPNOW_PEER_LIST_STR_MAX + 32];
     if (!web_form_get_field(body, "peers", peers, sizeof(peers))) {
         if (strstr(body, "peers=") != NULL) {
-            return send_page(req, "400 Bad Request", espnow_error_text(ESPNOW_CONFIG_ERR_PEERS), true);
+            return send_page(req, "400 Bad Request", WEB_SETTINGS_ESPNOW, espnow_error_text(ESPNOW_CONFIG_ERR_PEERS), true);
         }
         peers[0] = '\0';
     }
     if (!espnow_peer_list_parse(peers, &cfg)) {
-        return send_page(req, "400 Bad Request", espnow_error_text(ESPNOW_CONFIG_ERR_PEERS), true);
+        return send_page(req, "400 Bad Request", WEB_SETTINGS_ESPNOW, espnow_error_text(ESPNOW_CONFIG_ERR_PEERS), true);
     }
     char gateway[ESPNOW_MAC_STR_LEN + 16];
     if (!web_form_get_field(body, "gateway", gateway, sizeof(gateway))) {
         if (strstr(body, "gateway=") != NULL) {
-            return send_page(req, "400 Bad Request", espnow_error_text(ESPNOW_CONFIG_ERR_GATEWAY), true);
+            return send_page(req, "400 Bad Request", WEB_SETTINGS_ESPNOW, espnow_error_text(ESPNOW_CONFIG_ERR_GATEWAY), true);
         }
         gateway[0] = '\0';
     }
@@ -394,18 +412,18 @@ static esp_err_t handle_post_espnow(httpd_req_t *req)
     if (gateway[0] == '\0') {
         memset(cfg.gateway, 0, sizeof(cfg.gateway));
     } else if (!espnow_mac_parse(gateway, cfg.gateway)) {
-        return send_page(req, "400 Bad Request", espnow_error_text(ESPNOW_CONFIG_ERR_GATEWAY), true);
+        return send_page(req, "400 Bad Request", WEB_SETTINGS_ESPNOW, espnow_error_text(ESPNOW_CONFIG_ERR_GATEWAY), true);
     }
 
     espnow_config_result_t result = espnow_config_validate(&cfg, s_ctx.own_mac);
     if (result != ESPNOW_CONFIG_OK) {
-        return send_page(req, "400 Bad Request", espnow_error_text(result), true);
+        return send_page(req, "400 Bad Request", WEB_SETTINGS_ESPNOW, espnow_error_text(result), true);
     }
     if (espnow_store_save(&cfg) != ESP_OK) {
-        return send_page(req, "500 Internal Server Error", WEB_MSG_SAVE_FAILED, true);
+        return send_page(req, "500 Internal Server Error", WEB_SETTINGS_ESPNOW, WEB_MSG_SAVE_FAILED, true);
     }
     s_ctx.espnow = cfg;
-    esp_err_t err = send_page(req, "200 OK", WEB_MSG_SAVED_RESTART, false);
+    esp_err_t err = send_page(req, "200 OK", WEB_SETTINGS_ESPNOW, WEB_MSG_SAVED_RESTART, false);
     if (s_ctx.schedule_restart != NULL) {
         s_ctx.schedule_restart();
     }
@@ -417,7 +435,7 @@ static esp_err_t handle_post_led(httpd_req_t *req)
     const web_msg_t invalid = WEB_MSG_LED;
     char body[WEB_BODY_MAX];
     if (!read_body(req, body, sizeof(body))) {
-        return send_page(req, "400 Bad Request", WEB_MSG_BAD_REQUEST, true);
+        return send_page(req, "400 Bad Request", WEB_SETTINGS_LED, WEB_MSG_BAD_REQUEST, true);
     }
     char gpio_text[8];
     char count_text[8];
@@ -425,22 +443,22 @@ static esp_err_t handle_post_led(httpd_req_t *req)
     unsigned count;
     if (!web_form_get_field(body, "led_gpio", gpio_text, sizeof(gpio_text)) ||
         !web_form_get_field(body, "led_count", count_text, sizeof(count_text))) {
-        return send_page(req, "400 Bad Request", invalid, true);
+        return send_page(req, "400 Bad Request", WEB_SETTINGS_LED, invalid, true);
     }
     web_form_trim(count_text);
     if (!led_config_parse_uint(gpio_text, UINT8_MAX, &gpio) ||
         !led_config_parse_uint(count_text, UINT8_MAX, &count)) {
-        return send_page(req, "400 Bad Request", invalid, true);
+        return send_page(req, "400 Bad Request", WEB_SETTINGS_LED, invalid, true);
     }
     led_config_t cfg = {.gpio = (uint8_t)gpio, .count = (uint8_t)count};
     if (!led_config_is_valid(&cfg, s_ctx.led_gpio_mask)) {
-        return send_page(req, "400 Bad Request", invalid, true);
+        return send_page(req, "400 Bad Request", WEB_SETTINGS_LED, invalid, true);
     }
     if (led_store_save(&cfg, s_ctx.led_gpio_mask) != ESP_OK) {
-        return send_page(req, "500 Internal Server Error", WEB_MSG_SAVE_FAILED, true);
+        return send_page(req, "500 Internal Server Error", WEB_SETTINGS_LED, WEB_MSG_SAVE_FAILED, true);
     }
     s_ctx.led = cfg;
-    esp_err_t err = send_page(req, "200 OK", WEB_MSG_SAVED_RESTART, false);
+    esp_err_t err = send_page(req, "200 OK", WEB_SETTINGS_LED, WEB_MSG_SAVED_RESTART, false);
     if (s_ctx.schedule_restart != NULL) {
         s_ctx.schedule_restart();
     }
@@ -501,8 +519,11 @@ esp_err_t web_server_start(const web_server_ctx_t *ctx)
         {.uri = "/style.css", .method = HTTP_GET, .handler = handle_get_style},
         {.uri = "/api/colors", .method = HTTP_GET, .handler = handle_get_api_colors},
         {.uri = "/api/colors", .method = HTTP_PUT, .handler = handle_put_api_colors},
+        {.uri = "/ble", .method = HTTP_GET, .handler = handle_get_ble_page},
         {.uri = "/ble", .method = HTTP_POST, .handler = handle_post_ble},
+        {.uri = "/espnow", .method = HTTP_GET, .handler = handle_get_espnow_page},
         {.uri = "/espnow", .method = HTTP_POST, .handler = handle_post_espnow},
+        {.uri = "/led", .method = HTTP_GET, .handler = handle_get_led_page},
         {.uri = "/led", .method = HTTP_POST, .handler = handle_post_led},
         {.uri = "/api/version", .method = HTTP_GET, .handler = handle_get_api_version},
     };

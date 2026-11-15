@@ -67,7 +67,7 @@ A menu at the top switches between three pages:
   color, then "Speichern". The page itself uses the REST API below.
 - **Status** (`/status`): mode, IP address, hostname, ESP-NOW MAC address and
   firmware version.
-- **Einstellungen** (`/`): Wi-Fi and device settings, see below.
+- **Einstellungen**: the settings, split into subpages, see below.
 
 The pages are in German or English. By default the device follows the
 browser's language (`Accept-Language`): German if the browser prefers German
@@ -81,21 +81,27 @@ All pages share one stylesheet, `/style.css`, stored in flash and cached by
 the browser for an hour. It follows the light/dark setting of the device and
 needs no internet (no external fonts or libraries).
 
-The Einstellungen page has a form for:
+The Einstellungen menu item opens a second menu row (only on the settings
+pages) with one subpage per topic: **WLAN** (`/`), **Bluetooth** (`/ble`),
+**ESP-NOW** (`/espnow`) and **LED-Strip** (`/led`). A subpage is only listed
+when the device has that feature. Each subpage has its own "Speichern und neu
+starten" button; after saving, the same subpage is shown again with the result.
+
+The **WLAN** subpage has a form for:
 
 - **Wi-Fi (SSID)**: the network to join. Empty = always access point.
 - **Wi-Fi password**: empty = keep the saved one. Tick "offenes WLAN" for a
   network without password. The saved password is never shown.
 - **Hostname**: 1–32 characters, letters, digits and `-` (used for DHCP and mDNS).
 
-A second card, **Bluetooth**, sets the Bluetooth device name (1–20 characters,
-printable ASCII only, so no umlauts; default `LED Signal`). It has its own
-"Speichern und neu starten" button, and the new name is used after the restart.
+The **Bluetooth** subpage sets the Bluetooth device name (1–20 characters,
+printable ASCII only, so no umlauts; default `LED Signal`).
+The new name is used after the restart.
 
-A third card, **ESP-NOW**, sets the role of the device (see [ESP-NOW](#esp-now))
+The **ESP-NOW** subpage sets the role of the device (see [ESP-NOW](#esp-now))
 and shows its own ESP-NOW MAC address, which is also listed on the Status page.
 
-A fourth card, **LED-Strip**, sets the data pin and the number of LEDs. It is
+The **LED-Strip** subpage sets the data pin and the number of LEDs. It is
 shown in every mode, also on ESP-NOW receivers. The pin is picked from a list
 of pins that are safe to use: ESP32-C3 GPIO 0, 1, 3–7, 10 (no strapping, flash,
 USB or UART pins) and classic ESP32 GPIO 4, 13, 14, 16–19, 21–23, 25–27, 32, 33.
@@ -141,7 +147,7 @@ curl -X PUT -H 'Content-Type: application/json' \
 ## Bluetooth
 
 The ESP advertises as a Bluetooth LE device (default name `LED Signal`, change
-it on the Einstellungen page). Bluetooth runs alongside Wi-Fi in both modes.
+it on the Einstellungen → Bluetooth page). Bluetooth runs alongside Wi-Fi in both modes.
 There is no pairing: like the web site, anyone in range can change the colors.
 
 | | UUID |
@@ -174,7 +180,7 @@ python tools/ble_set_colors.py "LED Signal" --clear         # random hues
 ## ESP-NOW
 
 ESP-NOW lets ESPs send short messages to each other directly, without a router.
-Every device has one of two roles (card "ESP-NOW" on the Einstellungen page,
+Every device has one of two roles (Einstellungen → ESP-NOW,
 saved in flash, applied after the restart):
 
 - **Gateway** (default): works as described above (Wi-Fi, web site, Bluetooth).
@@ -192,7 +198,7 @@ interface; the access point uses a different one, so don't take it from a
 Wi-Fi scan.
 
 **Receiver boot:** the receiver opens its access point for **60 seconds** with
-the normal Einstellungen page (password on the strip as usual). While a device
+the normal settings pages (password on the strip as usual). While a device
 is connected, the access point stays open; 60 s after the last device has
 left, the receiver switches the access point and web site off and starts
 receiving. To change its settings later, switch it off and on again.
@@ -272,7 +278,7 @@ speed, default hostname, default Bluetooth name) are `#define`s at the top of `m
 | `components/wifi_ap/` | Starts the Wi-Fi access point, counts connected devices, remembers when the last one left |
 | `components/wifi_sta/` | Joins a Wi-Fi as client with timeout, reconnects after drop-outs |
 | `components/net_name/` | mDNS: `<hostname>.local` and the HTTP service; stop again |
-| `components/web_server/` | HTTP server: `GET /` settings page, `POST /config` save + restart, `GET /colors` palette page, `GET /style.css` stylesheet, `GET`/`PUT /api/colors` REST API, `POST /ble` Bluetooth name + restart, `POST /espnow` ESP-NOW role + restart, `POST /led` LED pin and count + restart, `GET /api/version` firmware version |
+| `components/web_server/` | HTTP server: `GET /`, `/ble`, `/espnow`, `/led` settings subpages, `GET /status` status page, `POST /config` save + restart, `GET /colors` palette page, `GET /style.css` stylesheet, `GET`/`PUT /api/colors` REST API, `POST /ble` Bluetooth name + restart, `POST /espnow` ESP-NOW role + restart, `POST /led` LED pin and count + restart, `GET /api/version` firmware version |
 | `tools/` | `ble_set_colors.py`: example Bluetooth client (Python, bleak); `project_version.cmake`: version number from the Git tag |
 | `test/host/` | Unity + CMock tests that run on the Linux host, no board needed |
 

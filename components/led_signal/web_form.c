@@ -194,7 +194,9 @@ static const char STYLE_CSS[] =
     "font:16px/1.5 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}"
     "header,main{max-width:34em;margin:0 auto;padding:1em}"
     "header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.6em}"
-    ".brand{font-weight:700;display:flex;align-items:center;gap:.5em}"
+    // Titel in eigener Zeile mittig, darunter Menü links und Sprachwahl rechts
+    ".brand{font-weight:700;display:flex;align-items:center;justify-content:center;gap:.5em;"
+    "flex-basis:100%}"
     ".brand:before{content:'';width:1.1em;height:1.1em;border-radius:50%;"
     "background:conic-gradient(#f43,#fd3,#3d6,#3cf,#76f,#f4c,#f43)}"
     "nav{display:flex;gap:.2em;background:var(--card);border:1px solid var(--line);"
@@ -203,6 +205,7 @@ static const char STYLE_CSS[] =
     "font-weight:600;font-size:.9em}"
     "nav a.cur{background:var(--acc);color:#fff}"
     "nav.lang a{padding:.35em .6em}"
+    "nav.sub{flex-wrap:wrap;width:fit-content;border-radius:14px;margin:0 0 1em}"
     "main{padding-top:0}"
     "h1{font-size:1.5em;margin:.2em 0 .6em}"
     "h2{font-size:.8em;margin:0 0 .6em;color:var(--mut);text-transform:uppercase;letter-spacing:.06em}"
@@ -408,12 +411,12 @@ static bool append_lang_link(char *buf, size_t len, size_t *pos, web_lang_t link
 }
 
 // Gemeinsamer Kopf aller Seiten: Stylesheet, Kopfleiste mit Menü (aktuelle
-// Seite markiert, Farben nur mit show_colors) und Sprachschalter, Beginn des Inhalts
+// Seite markiert, Farben nur mit show_colors) und Sprachschalter (lädt href neu),
+// Beginn des Inhalts
 static bool append_head(char *buf, size_t len, size_t *pos, page_t page, bool show_colors,
-                        web_lang_t lang)
+                        web_lang_t lang, const char *href)
 {
     const page_text_t *t = page_text(lang);
-    const char *href = page == PAGE_COLORS ? "/colors" : (page == PAGE_STATUS ? "/status" : "/");
     bool ok = append(buf, len, pos,
                   "<!DOCTYPE html><html lang=\"%s\"><head><meta charset=\"utf-8\">"
                   "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
@@ -452,7 +455,7 @@ int web_status_page_render(char *buf, size_t len, const web_page_info_t *info)
     }
 
     size_t pos = 0;
-    bool ok = append_head(buf, len, &pos, PAGE_STATUS, !info->receiver_mode, info->lang) &&
+    bool ok = append_head(buf, len, &pos, PAGE_STATUS, !info->receiver_mode, info->lang, "/status") &&
               append(buf, len, &pos,
                      "<h1>%s</h1><div class=\"card\"><dl>"
                      "<dt>%s</dt><dd>%s</dd><dt>IP</dt><dd>%s</dd><dt>Hostname</dt><dd>%s</dd>",
@@ -470,12 +473,60 @@ int web_status_page_render(char *buf, size_t len, const web_page_info_t *info)
     return ok ? (int)pos : -1;
 }
 
+// Einträge des Untermenüs der Einstellungen (Reihenfolge = Menü)
+typedef struct {
+    web_settings_page_t page;
+    const char *href;
+} settings_link_t;
+
+static const settings_link_t SETTINGS_LINKS[] = {
+    {WEB_SETTINGS_WIFI, "/"},
+    {WEB_SETTINGS_BLE, "/ble"},
+    {WEB_SETTINGS_ESPNOW, "/espnow"},
+    {WEB_SETTINGS_LED, "/led"},
+};
+
+// Gibt es die Unterseite mit diesen Daten? WLAN immer, sonst nur mit ihren Angaben
+static bool settings_available(web_settings_page_t page, const web_page_info_t *info)
+{
+    switch (page) {
+    case WEB_SETTINGS_BLE:
+        return info->ble_name != NULL;
+    case WEB_SETTINGS_ESPNOW:
+        return info->own_mac != NULL;
+    case WEB_SETTINGS_LED:
+        return info->led_gpio_mask != 0;
+    default:
+        return true;
+    }
+}
+
+static const char *settings_label(web_settings_page_t page, const page_text_t *t)
+{
+    switch (page) {
+    case WEB_SETTINGS_BLE:
+        return "Bluetooth";
+    case WEB_SETTINGS_ESPNOW:
+        return "ESP-NOW";
+    case WEB_SETTINGS_LED:
+        return t->led_strip;
+    default:
+        return t->wifi;
+    }
+}
+
 int web_page_render(char *buf, size_t len, const web_page_info_t *info)
 {
     if (buf == NULL || len == 0 || info == NULL) {
         return -1;
     }
     const page_text_t *t = page_text(info->lang);
+    // Nicht vorhandene Unterseite -> WLAN
+    web_settings_page_t page = info->settings_page;
+    if ((unsigned)page >= sizeof(SETTINGS_LINKS) / sizeof(SETTINGS_LINKS[0]) ||
+        !settings_available(page, info)) {
+        page = WEB_SETTINGS_WIFI;
+    }
 
     // Alle Texte vor dem Einsetzen maskieren (SSID darf z. B. < oder " enthalten)
     char hostname[200], ssid[200], ble_name[128], message[400];
@@ -492,34 +543,47 @@ int web_page_render(char *buf, size_t len, const web_page_info_t *info)
     }
 
     size_t pos = 0;
-    bool ok = append_head(buf, len, &pos, PAGE_SETTINGS, !info->receiver_mode, info->lang) &&
-              append(buf, len, &pos, "<h1>%s</h1>", t->settings);
+    bool ok = append_head(buf, len, &pos, PAGE_SETTINGS, !info->receiver_mode, info->lang,
+                          SETTINGS_LINKS[page].href) &&
+              append(buf, len, &pos, "<nav class=\"sub\">");
+    // Untermenü: nur vorhandene Unterseiten, aktuelle markiert
+    for (size_t i = 0; ok && i < sizeof(SETTINGS_LINKS) / sizeof(SETTINGS_LINKS[0]); i++) {
+        const settings_link_t *l = &SETTINGS_LINKS[i];
+        if (settings_available(l->page, info)) {
+            ok = append(buf, len, &pos, "<a href=\"%s\"%s>%s</a>", l->href,
+                        l->page == page ? " class=\"cur\"" : "", settings_label(l->page, t));
+        }
+    }
+    ok = ok && append(buf, len, &pos, "</nav><h1>%s</h1>", t->settings);
     if (ok && message[0] != '\0') {
         ok = append(buf, len, &pos, "<p class=\"msg%s\">%s</p>",
                     info->message_is_error ? " err" : "", message);
     }
-    ok = ok && append(buf, len, &pos,
-        "<form class=\"card\" method=\"post\" action=\"/config\"><h2>%s</h2>"
-        "<label>%s<input type=\"text\" name=\"ssid\" maxlength=\"32\" value=\"%s\"></label>"
-        "<label>%s<input type=\"password\" name=\"password\" maxlength=\"63\" "
-        "placeholder=\"%s\"></label>"
-        "<label class=\"chk\"><input type=\"checkbox\" name=\"open\" value=\"1\"> %s</label>"
-        "<label>Hostname<input type=\"text\" name=\"hostname\" maxlength=\"32\" value=\"%s\"></label>"
-        "<button type=\"submit\">%s</button>"
-        "<small>%s</small></form>",
-        t->wifi, t->wifi_ssid, ssid, t->wifi_password, t->password_keep, t->open_wifi,
-        hostname, t->save_restart, t->ssid_hint);
-    if (ok && info->ble_name != NULL) {
-        ok = append(buf, len, &pos,
+    switch (page) {
+    case WEB_SETTINGS_WIFI:
+        ok = ok && append(buf, len, &pos,
+            "<form class=\"card\" method=\"post\" action=\"/config\"><h2>%s</h2>"
+            "<label>%s<input type=\"text\" name=\"ssid\" maxlength=\"32\" value=\"%s\"></label>"
+            "<label>%s<input type=\"password\" name=\"password\" maxlength=\"63\" "
+            "placeholder=\"%s\"></label>"
+            "<label class=\"chk\"><input type=\"checkbox\" name=\"open\" value=\"1\"> %s</label>"
+            "<label>Hostname<input type=\"text\" name=\"hostname\" maxlength=\"32\" value=\"%s\"></label>"
+            "<button type=\"submit\">%s</button>"
+            "<small>%s</small></form>",
+            t->wifi, t->wifi_ssid, ssid, t->wifi_password, t->password_keep, t->open_wifi,
+            hostname, t->save_restart, t->ssid_hint);
+        break;
+    case WEB_SETTINGS_BLE:
+        ok = ok && append(buf, len, &pos,
                  "<form class=\"card\" method=\"post\" action=\"/ble\"><h2>Bluetooth</h2>"
                  "<label>%s<input type=\"text\" name=\"ble_name\" maxlength=\"%d\" value=\"%s\"></label>"
                  "<button type=\"submit\">%s</button><small>",
                  t->ble_name, NET_CONFIG_BLE_NAME_MAX, ble_name, t->save_restart) &&
              append(buf, len, &pos, t->ble_hint_fmt, NET_CONFIG_BLE_NAME_MAX) &&
              append(buf, len, &pos, "</small></form>");
-    }
-    if (ok && info->own_mac != NULL) {
-        ok = append(buf, len, &pos,
+        break;
+    case WEB_SETTINGS_ESPNOW:
+        ok = ok && append(buf, len, &pos,
                  "<form class=\"card\" method=\"post\" action=\"/espnow\"><h2>ESP-NOW</h2>"
                  "<label class=\"chk\"><input type=\"radio\" name=\"espnow_role\" value=\"gateway\"%s>"
                  " %s</label>"
@@ -537,9 +601,9 @@ int web_page_render(char *buf, size_t len, const web_page_info_t *info)
              append(buf, len, &pos, t->espnow_hint_fmt, own_mac, ESPNOW_PEERS_MAX,
                     info->espnow_window_s) &&
              append(buf, len, &pos, "</small></form>");
-    }
-    if (ok && info->led_gpio_mask != 0) {
-        ok = append(buf, len, &pos,
+        break;
+    case WEB_SETTINGS_LED:
+        ok = ok && append(buf, len, &pos,
             "<form class=\"card\" method=\"post\" action=\"/led\"><h2>%s</h2>"
             "<label>%s<select name=\"led_gpio\">", t->led_strip, t->led_gpio);
         for (unsigned gpio = 0; ok && gpio < 64; gpio++) {
@@ -557,6 +621,7 @@ int web_page_render(char *buf, size_t len, const web_page_info_t *info)
                      t->save_restart) &&
              append(buf, len, &pos, t->led_hint_fmt, LED_CONFIG_COUNT_MIN, LED_CONFIG_COUNT_MAX) &&
              append(buf, len, &pos, "</small></form>");
+        break;
     }
     ok = ok && append(buf, len, &pos, "</main></body></html>");
     return ok ? (int)pos : -1;
@@ -569,7 +634,7 @@ int web_colors_page_render_lang(char *buf, size_t len, web_lang_t lang)
     }
     const page_text_t *t = page_text(lang);
     size_t pos = 0;
-    bool ok = append_head(buf, len, &pos, PAGE_COLORS, true, lang);
+    bool ok = append_head(buf, len, &pos, PAGE_COLORS, true, lang, "/colors");
     // Die Seite lädt und speichert die Palette über GET/PUT /api/colors
     ok = ok && append(buf, len, &pos,
         "<h1>%s</h1><p id=\"msg\" class=\"msg\"></p>"
