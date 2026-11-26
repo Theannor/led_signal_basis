@@ -126,6 +126,59 @@ static void test_start_resets_client_count(void)
     TEST_ASSERT_EQUAL_INT(0, wifi_ap_client_count());
 }
 
+// esp_wifi_get_mode liefert mode und gibt err zurück
+static void expect_get_mode(wifi_mode_t mode, esp_err_t err)
+{
+    static wifi_mode_t s_mode;
+    s_mode = mode;
+    esp_wifi_get_mode_ExpectAnyArgsAndReturn(err);
+    esp_wifi_get_mode_ReturnThruPtr_mode(&s_mode);
+}
+
+static void test_stop_in_ap_mode_stops_wifi(void)
+{
+    expect_get_mode(WIFI_MODE_AP, ESP_OK);
+    esp_wifi_stop_ExpectAndReturn(ESP_OK);
+    TEST_ASSERT_EQUAL(ESP_OK, wifi_ap_stop());
+}
+
+static void test_stop_in_apsta_mode_switches_to_sta(void)
+{
+    expect_get_mode(WIFI_MODE_APSTA, ESP_OK);
+    esp_wifi_set_mode_ExpectAndReturn(WIFI_MODE_STA, ESP_OK);
+    TEST_ASSERT_EQUAL(ESP_OK, wifi_ap_stop());
+}
+
+static void test_stop_in_sta_mode_does_nothing(void)
+{
+    expect_get_mode(WIFI_MODE_STA, ESP_OK);
+    TEST_ASSERT_EQUAL(ESP_OK, wifi_ap_stop());
+}
+
+static void test_stop_reports_errors(void)
+{
+    expect_get_mode(WIFI_MODE_AP, ESP_ERR_WIFI_NOT_INIT);
+    TEST_ASSERT_EQUAL(ESP_ERR_WIFI_NOT_INIT, wifi_ap_stop());
+
+    expect_get_mode(WIFI_MODE_AP, ESP_OK);
+    esp_wifi_stop_ExpectAndReturn(ESP_FAIL);
+    TEST_ASSERT_EQUAL(ESP_FAIL, wifi_ap_stop());
+
+    expect_get_mode(WIFI_MODE_APSTA, ESP_OK);
+    esp_wifi_set_mode_ExpectAndReturn(WIFI_MODE_STA, ESP_FAIL);
+    TEST_ASSERT_EQUAL(ESP_FAIL, wifi_ap_stop());
+}
+
+static void test_stop_resets_client_count(void)
+{
+    start_ok();
+    send_event(WIFI_EVENT_AP_STACONNECTED);
+    expect_get_mode(WIFI_MODE_AP, ESP_OK);
+    esp_wifi_stop_ExpectAndReturn(ESP_OK);
+    TEST_ASSERT_EQUAL(ESP_OK, wifi_ap_stop());
+    TEST_ASSERT_EQUAL_INT(0, wifi_ap_client_count());
+}
+
 // Wird von test_main.c aufgerufen
 void run_wifi_ap_tests(void)
 {
@@ -137,4 +190,9 @@ void run_wifi_ap_tests(void)
     RUN_TEST(test_events_change_client_count);
     RUN_TEST(test_client_count_never_negative);
     RUN_TEST(test_start_resets_client_count);
+    RUN_TEST(test_stop_in_ap_mode_stops_wifi);
+    RUN_TEST(test_stop_in_apsta_mode_switches_to_sta);
+    RUN_TEST(test_stop_in_sta_mode_does_nothing);
+    RUN_TEST(test_stop_reports_errors);
+    RUN_TEST(test_stop_resets_client_count);
 }

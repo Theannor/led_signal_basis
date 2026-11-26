@@ -15,6 +15,11 @@ extern "C" {
 esp_err_t wifi_ap_start(const char *ssid, const char *password,
                         uint8_t channel, uint8_t max_clients);
 
+// Schaltet den Access Point ab: im reinen AP-Modus wird das WLAN gestoppt,
+// im AP+STA-Modus (ESP-NOW) bleibt nur die STA-Schnittstelle aktiv.
+// Ohne aktiven AP passiert nichts (ESP_OK). Setzt die Geräteanzahl auf 0.
+esp_err_t wifi_ap_stop(void);
+
 // Anzahl der aktuell verbundenen Geräte
 int wifi_ap_client_count(void);
 

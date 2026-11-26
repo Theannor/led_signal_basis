@@ -202,6 +202,14 @@ curl -X PUT -H 'Content-Type: application/json' \
 
 The ESP advertises as a Bluetooth LE device (default name `LED Signal`, change
 it on the Einstellungen → Bluetooth page). Bluetooth runs alongside Wi-Fi in both modes.
+
+In **access point mode** (no client Wi-Fi), the first palette written over
+Bluetooth shows on the strip right away (instead of the password) and switches
+the access point, web site and mDNS off as soon as no device is connected to the
+access point any more. Forwarding to ESP-NOW receivers keeps working. To reach
+the access point again, switch the board off and on. In client Wi-Fi mode,
+nothing is switched off.
+
 There is no pairing: like the web site, anyone in range can change the colors.
 
 | | UUID |
@@ -297,6 +305,9 @@ Example: red, red, blue, green, … → password `rrbg…`
 As soon as a device has joined, the strip twinkles. When the last device
 leaves, the password is shown again.
 
+Once a palette arrives over Bluetooth, the access point is switched off until
+the next restart (see [Bluetooth](#bluetooth)).
+
 **Reset everything** (new AP password, no client Wi-Fi, empty palette, default Bluetooth name, ESP-NOW gateway without receivers, default LED pin and count):
 `idf.py -p /dev/ttyACM0 erase-flash`, then flash again.
 
@@ -329,7 +340,7 @@ speed, default hostname, default Bluetooth name) are `#define`s at the top of `m
 | `components/espnow_link/` | ESP-NOW radio: gateway (forward, answer hellos) and receiver (channel search, hellos, receive) tasks |
 | `components/ble_api/` | Bluetooth palette read/write logic without the BLE stack (host-tested) |
 | `components/ble_gatt/` | NimBLE glue: GATT service, advertising; forwards to `ble_api` (board only) |
-| `components/wifi_ap/` | Starts the Wi-Fi access point, counts connected devices, remembers when the last one left |
+| `components/wifi_ap/` | Starts the Wi-Fi access point, counts connected devices, remembers when the last one left, switches the access point off again |
 | `components/wifi_sta/` | Joins a Wi-Fi as client with timeout, reconnects after drop-outs |
 | `components/net_name/` | mDNS: `<hostname>.local` and the HTTP service; stop again |
 | `components/web_server/` | HTTP server: `GET /` start page (colors as client, Wi-Fi settings as access point), `GET /wifi`, `/ble`, `/espnow`, `/led` settings subpages, `GET /status` status page, `POST /config` save + restart, `GET /colors` palette page, `GET /style.css` stylesheet, `GET`/`PUT /api/colors` REST API, `POST /ble` Bluetooth name + restart, `POST /espnow` ESP-NOW role + restart, `POST /led` LED pin and count + restart, `GET /api/version` firmware version |

@@ -105,6 +105,31 @@ esp_err_t wifi_ap_start(const char *ssid, const char *password,
     return ESP_OK;
 }
 
+esp_err_t wifi_ap_stop(void)
+{
+    wifi_mode_t mode = WIFI_MODE_NULL;
+    esp_err_t err = esp_wifi_get_mode(&mode);
+    if (err == ESP_OK) {
+        if (mode == WIFI_MODE_AP) {
+            // Nur AP aktiv: WLAN ganz aus (Bluetooth läuft weiter)
+            err = esp_wifi_stop();
+        } else if (mode == WIFI_MODE_APSTA) {
+            // ESP-NOW nutzt die STA-Schnittstelle: nur den AP-Teil abschalten
+            err = esp_wifi_set_mode(WIFI_MODE_STA);
+        } else {
+            // Kein AP aktiv: nichts zu tun
+            return ESP_OK;
+        }
+    }
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "AP abschalten fehlgeschlagen: %s", esp_err_to_name(err));
+        return err;
+    }
+    atomic_store(&s_clients, 0);
+    ESP_LOGI(TAG, "AP abgeschaltet");
+    return ESP_OK;
+}
+
 int wifi_ap_client_count(void)
 {
     return atomic_load(&s_clients);

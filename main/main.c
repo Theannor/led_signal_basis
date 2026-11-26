@@ -58,6 +58,8 @@
 #define AP_CHANNEL          1
 #define AP_MAX_CLIENTS      4
 #define AP_IP               "192.168.4.1"  // Standard-Adresse des ESP-IDF-AP
+#define AP_OFF_CHECK_MS     500   // nach erster Bluetooth-Palette: so oft prüfen, ob noch Geräte am AP sind
+#define AP_OFF_TASK_STACK   3072
 
 // WLAN-Client
 #define DEFAULT_HOSTNAME        "led-signal-basis"
@@ -113,6 +115,10 @@ static bool s_receiver_mode = false;           // Rolle Empfänger
 static volatile bool s_receiver_active = false;  // Fenster vorbei, ESP-NOW-Empfang läuft
 static bool s_gateway_active = false;          // leitet Paletten an Empfänger weiter
 
+// AP-Modus (Gateway): nach der ersten Palette per Bluetooth wird der AP abgeschaltet
+static volatile bool s_ble_used = false;     // erste Bluetooth-Palette ist da
+static volatile bool s_web_stopped = false;  // Webseite und AP sind aus
+
 // Farbpalette fürs Funkeln: vom Webserver gesetzt, von der Anzeige gelesen
 static SemaphoreHandle_t s_palette_lock;
 static led_palette_t s_palette;
@@ -144,8 +150,8 @@ static void on_palette_changed(const led_palette_t *palette)
         xTaskNotifyGive(s_display_task);
     }
     // Webseite auf denselben Stand bringen (bei Änderung per Bluetooth);
-    // beim aktiven Empfänger läuft keine Webseite mehr
-    if (!s_receiver_active) {
+    // beim aktiven Empfänger und nach abgeschaltetem AP läuft keine Webseite mehr
+    if (!s_receiver_active && !s_web_stopped) {
         esp_err_t err = web_server_set_palette(palette);
         if (err != ESP_OK) {
             ESP_LOGW(TAG, "Palette für die Webseite nicht übernommen: %s", esp_err_to_name(err));
@@ -159,6 +165,43 @@ static void on_palette_changed(const led_palette_t *palette)
         }
     }
     ESP_LOGI(TAG, "Neue Palette mit %u Farben", (unsigned)palette->count);
+}
+
+// AP-Modus (Gateway): wartet, bis kein Gerät mehr am AP hängt, und schaltet
+// dann Webseite, mDNS und AP ab. Zurück zum AP nur per Neustart.
+static void ap_off_task(void *arg)
+{
+    while (wifi_ap_client_count() > 0) {
+        vTaskDelay(pdMS_TO_TICKS(AP_OFF_CHECK_MS));
+    }
+    s_web_stopped = true;
+    esp_err_t err = web_server_stop();
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "Webseite stoppen fehlgeschlagen: %s", esp_err_to_name(err));
+    }
+    net_name_stop();
+    err = wifi_ap_stop();
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "Access Point abschalten fehlgeschlagen: %s", esp_err_to_name(err));
+    } else {
+        ESP_LOGI(TAG, "Access Point und Webseite aus (Farben per Bluetooth), zurück per Neustart");
+    }
+    vTaskDelete(NULL);
+}
+
+// Per Bluetooth gesetzte Palette: wie jede andere übernehmen; im AP-Modus
+// beim ersten Mal den AP abschalten (sobald kein Gerät mehr verbunden ist)
+static void on_ble_palette(const led_palette_t *palette)
+{
+    on_palette_changed(palette);
+    if (s_client_mode || s_ble_used) {
+        return;
+    }
+    s_ble_used = true;
+    ESP_LOGI(TAG, "Erste Palette per Bluetooth, Access Point wird abgeschaltet");
+    if (xTaskCreate(ap_off_task, "ap_off", AP_OFF_TASK_STACK, NULL, 5, NULL) != pdPASS) {
+        ESP_LOGE(TAG, "AP-Abschalt-Task konnte nicht gestartet werden");
+    }
 }
 
 // Per ESP-NOW empfangene Palette speichern (für den nächsten Start) und anzeigen
@@ -191,7 +234,7 @@ static void sync_palette(led_palette_t *local, uint32_t *version)
 }
 
 // AP-Modus: ohne verbundenes Gerät Passwort zeigen (eine LED nach der anderen
-// kurz weiß), sonst Funkeln.
+// kurz weiß), sonst Funkeln; nach der ersten Palette per Bluetooth immer Funkeln.
 // ESP-NOW-Empfänger: im Einstellungsfenster wie AP-Modus, danach blau
 // pulsierend, solange das Gateway gesucht wird, sonst Funkeln.
 // Client-Modus: kurz grün, dann Funkeln; nach STA_FALLBACK_MS ohne
@@ -228,7 +271,8 @@ static void display_task(void *arg)
 
     while (true) {
         bool receiver_active = s_receiver_active;
-        bool show_password = !s_client_mode && !receiver_active && wifi_ap_client_count() == 0;
+        bool show_password = !s_client_mode && !receiver_active && !s_ble_used &&
+                             wifi_ap_client_count() == 0;
         bool show_search = receiver_active && !espnow_link_receiver_connected();
         bool show_green = s_client_mode && (now_ms() - started_ms) < GREEN_FLASH_MS;
 
@@ -476,7 +520,7 @@ void app_main(void)
         // Bluetooth ist optional: ohne läuft der Rest normal weiter
         ble_api_ctx_t ble = {
             .get_palette = get_palette,
-            .on_palette_changed = on_palette_changed,
+            .on_palette_changed = on_ble_palette,
         };
         ESP_ERROR_CHECK(ble_api_init(&ble));
         if (ble_gatt_start(ble_name) != ESP_OK) {
